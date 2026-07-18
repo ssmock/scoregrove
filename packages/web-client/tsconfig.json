@@ -12,5 +12,5 @@
     "types": ["vite/client"]
   },
   "include": ["src"],
-  "references": [{ "path": "../domain" }]
+  "references": [{ "path": "../domain" }, { "path": "../engraving" }]
 }

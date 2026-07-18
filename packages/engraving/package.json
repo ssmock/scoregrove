@@ -1,0 +1,26 @@
+{
+  "name": "@scoregrove/engraving",
+  "version": "0.0.1",
+  "private": true,
+  "type": "module",
+  "exports": {
+    "./*": {
+      "types": "./dist/*.d.ts",
+      "default": "./dist/*.js"
+    }
+  },
+  "scripts": {
+    "build": "tsc -b",
+    "generate": "node scripts/generate-bravura.mjs && prettier --write src/Bravura.ts",
+    "test": "tsc --noEmit -p tsconfig.test.json && vitest run",
+    "test:watch": "vitest"
+  },
+  "dependencies": {
+    "@scoregrove/domain": "workspace:*"
+  },
+  "devDependencies": {
+    "prettier": "^3.9.5",
+    "typescript": "^7.0.2",
+    "vitest": "^4.1.10"
+  }
+}

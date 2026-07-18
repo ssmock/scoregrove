@@ -1,6 +1,17 @@
 import type { Preview } from '@storybook/vue3-vite';
+import '../src/music/smufl.css';
+import { loadMusicFont } from '../src/music/fonts';
 
 const preview: Preview = {
+  loaders: [
+    async () => {
+      // Music glyphs render as tofu until Bravura is ready
+      await loadMusicFont();
+
+      return {};
+    },
+  ],
+
   parameters: {
     controls: {
       matchers: {

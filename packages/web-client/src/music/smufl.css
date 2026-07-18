@@ -1,0 +1,22 @@
+/*
+ * The Bravura music font (SIL Open Font License — see OFL.txt alongside).
+ *
+ * SMuFL convention: at font-size 4 the five-line staff spans exactly 1 em, so
+ * inside an SVG whose user unit is one staff space, `.smufl` glyphs come out
+ * at the right scale with their origins on the baseline.
+ */
+@font-face {
+  font-family: 'Bravura';
+  src: url('./Bravura.woff2') format('woff2');
+}
+
+.smufl {
+  font-family: 'Bravura';
+  font-size: 4px;
+}
+
+/* Textual score annotations (navigation instructions, tempo words) */
+.music-text {
+  font-family: Georgia, 'Times New Roman', serif;
+  font-style: italic;
+}

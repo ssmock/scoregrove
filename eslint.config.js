@@ -7,7 +7,7 @@ import globals from 'globals';
 
 export default tseslint.config(
   {
-    ignores: ['**/dist/**', '**/node_modules/**'],
+    ignores: ['**/dist/**', '**/node_modules/**', '**/storybook-static/**'],
   },
   js.configs.recommended,
   ...tseslint.configs.recommended,
@@ -21,7 +21,7 @@ export default tseslint.config(
     },
   },
   {
-    files: ['packages/server/**/*.ts'],
+    files: ['packages/server/**/*.ts', 'packages/*/scripts/**/*.mjs'],
     languageOptions: {
       globals: globals.node,
     },

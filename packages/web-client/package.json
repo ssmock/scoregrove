@@ -12,6 +12,7 @@
   },
   "dependencies": {
     "@scoregrove/domain": "workspace:*",
+    "@scoregrove/engraving": "workspace:*",
     "vue": "^3.5.40"
   },
   "devDependencies": {
