@@ -1,0 +1,35 @@
+# Dependencies
+node_modules
+
+# Build output
+dist
+dist-ssr
+storybook-static
+
+# TypeScript
+*.tsbuildinfo
+
+# Test coverage
+coverage
+
+# Logs
+*.log
+*storybook.log
+
+# Environment variables
+.env
+.env.*
+!.env.example
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Editors
+.idea
+*.swp
+*.swo
+*~
+
+# Local overrides
+*.local

@@ -1,0 +1,44 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(git log *)",
+      "Bash(git diff *)",
+      "Bash(git status)",
+      "Bash(git show *)",
+      "Read(**)",
+      "Write(**)"
+    ],
+    "deny": [
+      "Bash(git commit *)",
+      "Bash(git push *)",
+      "Bash(git rebase *)",
+      "Bash(git reset *)",
+      "Bash(git tag *)",
+      "Bash(docker *)",
+      "Bash(cd * && yarn add *)",
+      "Read(.env)",
+      "Read(.env*)",
+      "Read(.env.*)",
+      "Read(*.env)",
+      "Read(**/.env)",
+      "Read(**/.env.*)",
+      "Read(**/*.env)",
+      "Read(.sh)",
+      "Read(.sh.*)",
+      "Read(*.sh)",
+      "Read(**/.sh)",
+      "Read(**/.sh.*)",
+      "Read(**/*.sh)",
+      "Read(.npmrc)",
+      "Read(client-nginx.conf)",
+      "Read(Dockerfile*)",
+      "Read(docker-compose.override.yml)",
+      "Edit(.claude/settings.json)",
+      "Write(.claude/settings.json)",
+      "Edit(.claude/settings.local.json)",
+      "Write(.claude/settings.local.json)",
+      "Edit(CLAUDE.md)",
+      "Write(CLAUDE.md)"
+    ]
+  }
+}
