@@ -4,6 +4,7 @@ import type { LaidOutNote } from '@scoregrove/engraving/LayoutTree';
 import { StaffPosition } from '@scoregrove/engraving/StaffPosition';
 import AugmentationDots from './AugmentationDots.vue';
 import GlyphView from './GlyphView.vue';
+import GraceNoteView from './GraceNoteView.vue';
 import LedgerLines from './LedgerLines.vue';
 import StemView from './StemView.vue';
 
@@ -24,6 +25,11 @@ const y = computed(() => StaffPosition.y(props.note.position));
     :data-voice="props.note.address.voice"
     :data-element="props.note.address.element"
   >
+    <GraceNoteView
+      v-for="(grace, index) in props.note.graces ?? []"
+      :key="`grace-${index}`"
+      :grace="grace"
+    />
     <LedgerLines
       v-if="props.note.ledgers.length"
       :x="props.note.x"
@@ -43,6 +49,19 @@ const y = computed(() => StaffPosition.y(props.note.position));
       :glyph="props.note.flag.glyph"
       :x="props.note.flag.x"
       :y="props.note.flag.y"
+    />
+    <GlyphView
+      v-for="(mark, index) in props.note.articulations ?? []"
+      :key="`artic-${index}`"
+      :glyph="mark.glyph"
+      :x="mark.x"
+      :y="mark.y"
+    />
+    <GlyphView
+      v-if="props.note.fermata"
+      :glyph="props.note.fermata.glyph"
+      :x="props.note.fermata.x"
+      :y="props.note.fermata.y"
     />
   </g>
 </template>

@@ -16,13 +16,13 @@ export type GlyphRun = {
   width: number;
 };
 
-const clefGlyphs: Record<Clef, { glyph: GlyphName; y: number }> = {
+const clefGlyphs: Record<Clef, { glyph: GlyphName; change: GlyphName; y: number }> = {
   /** The G clef curls around the G4 line */
-  Treble: { glyph: 'gClef', y: 3 },
+  Treble: { glyph: 'gClef', change: 'gClefChange', y: 3 },
   /** The F clef's dots straddle the F3 line */
-  Bass: { glyph: 'fClef', y: 1 },
+  Bass: { glyph: 'fClef', change: 'fClefChange', y: 1 },
   /** The C clef centers on the middle line */
-  Alto: { glyph: 'cClef', y: 2 },
+  Alto: { glyph: 'cClef', change: 'cClefChange', y: 2 },
 };
 
 const digitGlyphs: Record<string, GlyphName> = {
@@ -50,10 +50,15 @@ const rowWidth = (row: readonly GlyphName[]): number =>
  * own gaps.
  */
 export const Signatures = {
-  clef(clef: Clef): GlyphRun {
-    const { glyph, y } = clefGlyphs[clef];
+  /**
+   * The clef at its reference line; `change` picks the small variant printed
+   * at a mid-piece clef change.
+   */
+  clef(clef: Clef, change = false): GlyphRun {
+    const entry = clefGlyphs[clef];
+    const glyph = change ? entry.change : entry.glyph;
 
-    return { glyphs: [{ glyph, x: 0, y }], width: Glyphs.width(glyph) };
+    return { glyphs: [{ glyph, x: 0, y: entry.y }], width: Glyphs.width(glyph) };
   },
 
   /**

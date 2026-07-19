@@ -10,11 +10,10 @@ const contexts = ContextWalk.walk(melody);
 
 const layoutMeasure = (measureIndex: number) =>
   MeasureLayout.layout({
-    context: contexts[measureIndex][0],
+    contexts: contexts[measureIndex],
     measure: melody.measures[measureIndex],
     measureIndex,
-    staffIndex: 0,
-  });
+  })[0];
 
 const meta: Meta<typeof MeasureView> = {
   title: 'Music/Composites/Measure',

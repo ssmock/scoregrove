@@ -1,11 +1,12 @@
 import { ClosingBarline, OpeningBarline } from '@scoregrove/domain/Barline';
 import { Clef } from '@scoregrove/domain/Clef';
-import { DotCount, Duration, NoteValue } from '@scoregrove/domain/Duration';
-import { DynamicMark } from '@scoregrove/domain/Dynamic';
+import { DotCount, Duration, NoteValue, Tuplet } from '@scoregrove/domain/Duration';
+import { DynamicChange, DynamicMark } from '@scoregrove/domain/Dynamic';
 import type { KeySignature } from '@scoregrove/domain/KeySignature';
 import { Mode } from '@scoregrove/domain/KeySignature';
 import { StaffContent, Voice, type Measure } from '@scoregrove/domain/Measure';
 import {
+  Chord,
   DynamicElement,
   Note,
   Rest,
@@ -15,7 +16,14 @@ import {
 import { NavigationJump, NavigationMark } from '@scoregrove/domain/Navigation';
 import { NonEmptyArray } from '@scoregrove/domain/NonEmptyArray';
 import { NonEmptyString } from '@scoregrove/domain/NonEmptyString';
-import { SlurRole } from '@scoregrove/domain/Notations';
+import {
+  Articulation,
+  GraceNote,
+  GraceStyle,
+  Lyric,
+  SlurRole,
+  Syllabic,
+} from '@scoregrove/domain/Notations';
 import {
   Accidental,
   Octave,
@@ -25,6 +33,7 @@ import {
   type Pitch as PitchType,
 } from '@scoregrove/domain/Pitch';
 import { PositiveInteger } from '@scoregrove/domain/PositiveInteger';
+import { Result } from '@scoregrove/domain/Result';
 import { Score } from '@scoregrove/domain/Score';
 import { Staff } from '@scoregrove/domain/Staff';
 import { TempoMarking } from '@scoregrove/domain/Tempo';
@@ -36,6 +45,13 @@ const pitch = (letter: PitchLetter, octave: number, accidental?: Accidental): Pi
 const duration = (noteValue: NoteValue, dots?: DotCount): Duration =>
   Duration.of(noteValue, dots ? { dots } : {});
 
+const lyric = (text: string, syllabic?: Syllabic): Lyric =>
+  Lyric.of(NonEmptyString.of(text), syllabic);
+
+const sing = (text: string, syllabic?: Syllabic) => ({
+  lyrics: NonEmptyArray.of([lyric(text, syllabic)]),
+});
+
 const key = (letter: PitchLetter, mode: Mode, accidental?: Accidental): KeySignature => ({
   tonic: PitchClass.of(letter, accidental),
   mode,
@@ -44,6 +60,18 @@ const key = (letter: PitchLetter, mode: Mode, accidental?: Accidental): KeySigna
 const fourFour: TimeSignature = {
   beats: PositiveInteger.of(4),
   beatUnit: BeatUnit.Quarter,
+};
+
+/**
+ * Unwraps Chord.create for fixture literals, which are known valid — a
+ * failure here is a broken fixture, not a validation case.
+ */
+const chordOf = (tones: PitchType[], chordDuration: Duration): Chord => {
+  const result = Chord.create(tones, chordDuration);
+
+  if (!Result.isOk(result)) throw Error(result.error.messages.join('; '));
+
+  return result.value;
 };
 
 const singleVoiceMeasure = (
@@ -63,8 +91,9 @@ export const Fixtures = {
   /**
    * A four-measure single-staff melody in G major exercising the
    * single-voice slice: mixed note values with dots and sixteenth flags, an
-   * opening dynamic, a printed sharp with its later cancellation, a rest, a
-   * cross-barline tie, and a final fermata.
+   * opening dynamic, a crescendo resolving to a forte, a printed sharp with
+   * its later cancellation, a rest, a cross-barline tie, and a final
+   * fermata.
    */
   monophonicMelody(): Score {
     return Score.of({
@@ -77,15 +106,25 @@ export const Fixtures = {
       measures: NonEmptyArray.of([
         singleVoiceMeasure([
           DynamicElement.of(DynamicMark.Piano),
-          Note.of(pitch(PitchLetter.G, 4), duration(NoteValue.Quarter)),
-          Note.of(pitch(PitchLetter.A, 4), duration(NoteValue.Eighth)),
-          Note.of(pitch(PitchLetter.B, 4), duration(NoteValue.Eighth)),
-          Note.of(pitch(PitchLetter.C, 5), duration(NoteValue.Quarter)),
-          Note.of(pitch(PitchLetter.A, 4), duration(NoteValue.Quarter)),
+          Note.of(pitch(PitchLetter.G, 4), duration(NoteValue.Quarter), sing('Sing')),
+          Note.of(pitch(PitchLetter.A, 4), duration(NoteValue.Eighth), {
+            articulations: NonEmptyArray.of([Articulation.Staccato]),
+            ...sing('a'),
+          }),
+          Note.of(pitch(PitchLetter.B, 4), duration(NoteValue.Eighth), {
+            articulations: NonEmptyArray.of([Articulation.Staccato]),
+            ...sing('song'),
+          }),
+          Note.of(pitch(PitchLetter.C, 5), duration(NoteValue.Quarter), sing('of')),
+          Note.of(pitch(PitchLetter.A, 4), duration(NoteValue.Quarter), sing('green')),
         ]),
         singleVoiceMeasure([
-          Note.of(pitch(PitchLetter.B, 4), duration(NoteValue.Quarter, 1)),
-          Note.of(pitch(PitchLetter.A, 4), duration(NoteValue.Eighth)),
+          Note.of(
+            pitch(PitchLetter.B, 4),
+            duration(NoteValue.Quarter, 1),
+            sing('sum', Syllabic.Begin),
+          ),
+          Note.of(pitch(PitchLetter.A, 4), duration(NoteValue.Eighth), sing('mer', Syllabic.End)),
           Note.of(pitch(PitchLetter.G, 4), duration(NoteValue.Sixteenth)),
           Note.of(pitch(PitchLetter.F, 4), duration(NoteValue.Sixteenth)),
           Note.of(pitch(PitchLetter.G, 4), duration(NoteValue.Sixteenth)),
@@ -93,15 +132,31 @@ export const Fixtures = {
           Rest.of(duration(NoteValue.Quarter)),
         ]),
         singleVoiceMeasure([
-          Note.of(pitch(PitchLetter.C, 5, Accidental.Sharp), duration(NoteValue.Quarter)),
-          Note.of(pitch(PitchLetter.C, 5), duration(NoteValue.Quarter)),
-          Note.of(pitch(PitchLetter.D, 5), duration(NoteValue.Half), { tie: TieRole.Begin }),
+          DynamicElement.of(DynamicChange.Crescendo),
+          Note.of(pitch(PitchLetter.C, 5, Accidental.Sharp), duration(NoteValue.Quarter), {
+            articulations: NonEmptyArray.of([Articulation.Accent]),
+            ...sing('days'),
+          }),
+          Note.of(pitch(PitchLetter.C, 5), duration(NoteValue.Quarter), sing('so')),
+          Note.of(pitch(PitchLetter.D, 5), duration(NoteValue.Half), {
+            tie: TieRole.Begin,
+            ...sing('bright'),
+          }),
         ]),
         singleVoiceMeasure(
           [
             Note.of(pitch(PitchLetter.D, 5), duration(NoteValue.Half), { tie: TieRole.End }),
-            Note.of(pitch(PitchLetter.C, 5), duration(NoteValue.Quarter)),
-            Note.of(pitch(PitchLetter.G, 4), duration(NoteValue.Quarter), { fermata: true }),
+            DynamicElement.of(DynamicMark.Forte),
+            Note.of(pitch(PitchLetter.C, 5), duration(NoteValue.Quarter), {
+              graces: NonEmptyArray.of([
+                GraceNote.of(pitch(PitchLetter.D, 5), GraceStyle.Acciaccatura),
+              ]),
+              ...sing('shine'),
+            }),
+            Note.of(pitch(PitchLetter.G, 4), duration(NoteValue.Quarter), {
+              fermata: true,
+              ...sing('on.'),
+            }),
           ],
           { closing: ClosingBarline.Final },
         ),
@@ -162,8 +217,14 @@ export const Fixtures = {
             ),
             StaffContent.singleVoice(
               NonEmptyArray.of([
-                Note.of(pitch(PitchLetter.E, 3), duration(NoteValue.Half)),
-                Note.of(pitch(PitchLetter.C, 3), duration(NoteValue.Half)),
+                chordOf(
+                  [pitch(PitchLetter.C, 3), pitch(PitchLetter.E, 3), pitch(PitchLetter.G, 3)],
+                  duration(NoteValue.Half),
+                ),
+                chordOf(
+                  [pitch(PitchLetter.C, 3), pitch(PitchLetter.F, 3), pitch(PitchLetter.A, 3)],
+                  duration(NoteValue.Half),
+                ),
               ]),
             ),
           ]),
@@ -202,10 +263,16 @@ export const Fixtures = {
           marks: NonEmptyArray.of([NavigationMark.Fine]),
           closing: ClosingBarline.Double,
         }),
-        singleVoiceMeasure(whole(PitchLetter.F), {
-          jump: NavigationJump.DalSegnoAlFine,
-          closing: ClosingBarline.Final,
-        }),
+        singleVoiceMeasure(
+          // A triplet of half notes fills the measure: 3 × (1/2 × 2/3) = 1
+          [PitchLetter.F, PitchLetter.E, PitchLetter.D].map((letter) =>
+            Note.of(pitch(letter, 4), Duration.of(NoteValue.Half, { tuplet: Tuplet.triplet() })),
+          ),
+          {
+            jump: NavigationJump.DalSegnoAlFine,
+            closing: ClosingBarline.Final,
+          },
+        ),
       ]),
     });
   },

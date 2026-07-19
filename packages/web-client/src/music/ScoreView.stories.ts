@@ -35,8 +35,8 @@ export const RepeatsAndNavigation: Story = {
 };
 
 /**
- * The two-staff fixture — rendered as its treble staff's first voice only
- * until multi-voice and multi-staff layout land.
+ * The two-staff fixture: onset columns align both staves and both treble
+ * voices, voice 1 stems up, voice 2 down.
  */
 export const TwoStaffMultiVoice: Story = {
   args: { score: Fixtures.twoStaffMultiVoice(), width: 70, scale: 12 },

@@ -4,6 +4,7 @@ import type { Score } from '@scoregrove/domain/Score';
 import { ScoreLayout } from '@scoregrove/engraving/ScoreLayout';
 import ScoreHeader from './ScoreHeader.vue';
 import SystemView from './SystemView.vue';
+import { canvasTextMeasurer } from './textMeasure';
 
 /**
  * The whole piece: header plus line-broken systems stacked in HTML, per the
@@ -37,7 +38,11 @@ onBeforeUnmount(() => observer?.disconnect());
 
 const targetWidth = computed(() => props.width ?? measuredWidth.value);
 
-const laidOut = computed(() => ScoreLayout.layout(props.score, { width: targetWidth.value }));
+const measureText = canvasTextMeasurer();
+
+const laidOut = computed(() =>
+  ScoreLayout.layout(props.score, { width: targetWidth.value, measureText }),
+);
 </script>
 
 <template>
@@ -48,6 +53,7 @@ const laidOut = computed(() => ScoreLayout.layout(props.score, { width: targetWi
       :key="index"
       :system="system"
       :scale="props.scale"
+      :labels="index === 0 ? laidOut.staffLabels : []"
     />
   </div>
 </template>

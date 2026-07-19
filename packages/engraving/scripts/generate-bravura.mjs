@@ -18,10 +18,13 @@ const root = join(dirname(fileURLToPath(import.meta.url)), '..');
  * Grouped as in the SMuFL specification.
  */
 const glyphNames = [
-  // Clefs
+  // Clefs (and their small change variants)
   'gClef',
   'fClef',
   'cClef',
+  'gClefChange',
+  'fClefChange',
+  'cClefChange',
   // Time signatures
   'timeSig0',
   'timeSig1',

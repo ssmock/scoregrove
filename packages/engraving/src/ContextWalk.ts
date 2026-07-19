@@ -17,6 +17,11 @@ export type MeasureContext = {
   swing: Swing;
   tempo?: Tempo;
   printClef: boolean;
+  /**
+   * True only for a genuine mid-piece clef change (not the first measure,
+   * and not a system-start reprint) — those print the small change variant.
+   */
+  clefChanged: boolean;
   printKey: boolean;
   printTime: boolean;
   printTempo: boolean;
@@ -62,6 +67,7 @@ export const ContextWalk = {
           swing,
           ...(tempo ? { tempo } : {}),
           printClef: first || clefChange !== undefined,
+          clefChanged: !first && clefChange !== undefined,
           printKey,
           printTime,
           printTempo,

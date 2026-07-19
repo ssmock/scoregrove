@@ -15,11 +15,10 @@ const contexts = ContextWalk.walk(melody);
 
 const notesOfMeasure = (measureIndex: number): LaidOutNote[] =>
   MeasureLayout.layout({
-    context: contexts[measureIndex][0],
+    contexts: contexts[measureIndex],
     measure: melody.measures[measureIndex],
     measureIndex,
-    staffIndex: 0,
-  }).elements.filter((element): element is LaidOutNote => element.kind === 'note');
+  })[0].elements.filter((element): element is LaidOutNote => element.kind === 'note');
 
 const meta: Meta<typeof NoteView> = {
   title: 'Music/Composites/Note',
@@ -39,8 +38,9 @@ export const DottedQuarter: Story = {
   args: { note: notesOfMeasure(1)[0] },
 };
 
-export const SixteenthWithFlag: Story = {
-  args: { note: notesOfMeasure(1)[2] },
+/** The eighth after the dotted quarter — alone in its beat, so it keeps a flag */
+export const EighthWithFlag: Story = {
+  args: { note: notesOfMeasure(1)[1] },
 };
 
 export const WithPrintedSharp: Story = {

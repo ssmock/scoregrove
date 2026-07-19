@@ -18,21 +18,30 @@ describe('Fixtures', () => {
   });
 });
 
-describe('SystemLayout.singleStaff', () => {
+describe('SystemLayout.unbroken', () => {
   it('lays the melody out measure after measure', () => {
-    const system = SystemLayout.singleStaff(Fixtures.monophonicMelody());
+    const system = SystemLayout.unbroken(Fixtures.monophonicMelody());
 
     expect(system.measures).toHaveLength(4);
     expect(system.measures[0].x).toBe(0);
+    expect(system.staffYs).toEqual([0]);
 
     system.measures.slice(1).forEach((entry, index) => {
       const previous = system.measures[index];
 
-      expect(entry.x).toBeCloseTo(previous.x + previous.measure.width);
+      expect(entry.x).toBeCloseTo(previous.x + previous.staves[0].width);
     });
 
     expect(system.width).toBeCloseTo(
-      system.measures.reduce((sum, entry) => sum + entry.measure.width, 0),
+      system.measures.reduce((sum, entry) => sum + entry.staves[0].width, 0),
     );
+  });
+
+  it('stacks the two-staff fixture on two rows', () => {
+    const system = SystemLayout.unbroken(Fixtures.twoStaffMultiVoice());
+
+    expect(system.staffYs[0]).toBe(0);
+    expect(system.staffYs[1]).toBeGreaterThanOrEqual(10);
+    system.measures.forEach((entry) => expect(entry.staves).toHaveLength(2));
   });
 });

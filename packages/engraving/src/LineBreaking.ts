@@ -1,12 +1,20 @@
 import type { Score } from '@scoregrove/domain/Score';
 import { ContextWalk, type MeasureContext } from './ContextWalk';
+import { Hairpins } from './Hairpins';
 import type { LaidOutSystem } from './LayoutTree';
 import { MeasureLayout } from './MeasureLayout';
+import { Slurs } from './Slurs';
+import { Voltas } from './Voltas';
+import { SystemLayout } from './SystemLayout';
+import type { TextMeasurer } from './TextMeasure';
+import { Ties } from './Ties';
+import { VerticalLayout } from './VerticalLayout';
 
 export type LineBreakOptions = {
   /** The width each system should fill, in staff spaces */
   width: number;
-  staffIndex?: number;
+  /** Real text measurement; the approximation serves when absent */
+  measureText?: TextMeasurer;
 };
 
 /**
@@ -31,24 +39,23 @@ export const LineBreaking = {
    * the greedy fill behind this same interface later.
    */
   breakIntoSystems(score: Score, options: LineBreakOptions): LaidOutSystem[] {
-    const staffIndex = options.staffIndex ?? 0;
     const contexts = ContextWalk.walk(score);
 
-    const contextAt = (measureIndex: number, opensSystem: boolean): MeasureContext => {
-      const context = contexts[measureIndex][staffIndex];
+    const contextsAt = (measureIndex: number, opensSystem: boolean): MeasureContext[] => {
+      const measureContexts = contexts[measureIndex];
 
-      if (!opensSystem || measureIndex === 0) return context;
+      if (!opensSystem || measureIndex === 0) return measureContexts;
 
-      return { ...context, printClef: true, printKey: true };
+      return measureContexts.map((context) => ({ ...context, printClef: true, printKey: true }));
     };
 
     const layoutAt = (measureIndex: number, opensSystem: boolean, stretch: number) =>
       MeasureLayout.layout({
-        context: contextAt(measureIndex, opensSystem),
+        contexts: contextsAt(measureIndex, opensSystem),
         measure: score.measures[measureIndex],
         measureIndex,
-        staffIndex,
         stretch,
+        ...(options.measureText ? { measureText: options.measureText } : {}),
       });
 
     /** Greedy fill: each system is a run of measure indices */
@@ -57,12 +64,12 @@ export const LineBreaking = {
     let currentWidth = 0;
 
     score.measures.forEach((_measure, measureIndex) => {
-      const width = layoutAt(measureIndex, current.length === 0, 1).width;
+      const width = layoutAt(measureIndex, current.length === 0, 1)[0]?.width ?? 0;
 
       if (current.length && currentWidth + width > options.width) {
         systems.push(current);
         current = [measureIndex];
-        currentWidth = layoutAt(measureIndex, true, 1).width;
+        currentWidth = layoutAt(measureIndex, true, 1)[0]?.width ?? 0;
       } else {
         current.push(measureIndex);
         currentWidth += width;
@@ -75,15 +82,25 @@ export const LineBreaking = {
       let x = 0;
 
       const measures = indices.map((measureIndex, position) => {
-        const laid = layoutAt(measureIndex, position === 0, stretch);
-        const entry = { x, measure: laid };
+        const staves = layoutAt(measureIndex, position === 0, stretch);
+        const entry = { x, index: measureIndex, staves };
 
-        x += laid.width;
+        x += staves[0]?.width ?? 0;
 
         return entry;
       });
 
-      return { measures, width: x };
+      return {
+        measures,
+        staffYs: SystemLayout.staffYs(score.staves.length),
+        ties: [],
+        slurs: [],
+        hairpins: [],
+        voltas: [],
+        top: 0,
+        bottom: 4,
+        width: x,
+      };
     };
 
     /**
@@ -119,8 +136,15 @@ export const LineBreaking = {
       return best;
     };
 
-    return systems.map((indices, systemIndex) =>
+    const assembled = systems.map((indices, systemIndex) =>
       systemIndex === systems.length - 1 ? assemble(indices, 1) : justify(indices),
+    );
+
+    return VerticalLayout.apply(
+      Voltas.attach(
+        score,
+        Hairpins.attach(score, Slurs.attach(score, Ties.attach(score, assembled))),
+      ),
     );
   },
 };

@@ -76,6 +76,21 @@ export const glyphs = {
     bBoxNE: [2.796, 2.024],
     bBoxSW: [0, -2.024],
   },
+  gClefChange: {
+    codepoint: '\u{E07A}',
+    bBoxNE: [1.76, 2.828],
+    bBoxSW: [0, -1.82],
+  },
+  fClefChange: {
+    codepoint: '\u{E07C}',
+    bBoxNE: [1.852, 0.68],
+    bBoxSW: [-0.06, -1.656],
+  },
+  cClefChange: {
+    codepoint: '\u{E07B}',
+    bBoxNE: [2.024, 1.328],
+    bBoxSW: [0, -1.328],
+  },
   timeSig0: {
     codepoint: '\u{E080}',
     bBoxNE: [1.8, 1.004],

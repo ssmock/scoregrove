@@ -14,12 +14,19 @@ type Story = StoryObj<typeof meta>;
 
 /**
  * The end-to-end slice: the whole melody fixture through the full pipeline —
- * context walk, accidental resolution, stems and flags, spacing — into one
- * unbroken system. The full rendering demo will grow from here as line
- * breaking, multiple staves, and spanners land.
+ * context walk, accidental resolution, stems, beams, ties, spacing — into
+ * one unbroken system.
  */
 export const MelodyEndToEnd: Story = {
-  args: { system: SystemLayout.singleStaff(Fixtures.monophonicMelody()), scale: 12 },
+  args: { system: SystemLayout.unbroken(Fixtures.monophonicMelody()), scale: 12 },
+};
+
+/**
+ * Two staves, two voices on the treble: onset columns align simultaneous
+ * notes across staves, voice 1 stems up and voice 2 down.
+ */
+export const TwoStaffMultiVoice: Story = {
+  args: { system: SystemLayout.unbroken(Fixtures.twoStaffMultiVoice()), scale: 12 },
 };
 
 /**
@@ -28,5 +35,5 @@ export const MelodyEndToEnd: Story = {
  * checklist items.)
  */
 export const RepeatsBarlines: Story = {
-  args: { system: SystemLayout.singleStaff(Fixtures.repeatsAndNavigation()), scale: 12 },
+  args: { system: SystemLayout.unbroken(Fixtures.repeatsAndNavigation()), scale: 12 },
 };

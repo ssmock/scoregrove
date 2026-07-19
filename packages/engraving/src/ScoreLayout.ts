@@ -11,6 +11,8 @@ import { LineBreaking, type LineBreakOptions } from './LineBreaking';
 export type LaidOutScore = {
   title?: string;
   composer?: string;
+  /** One entry per staff, for the labels printed at the first system */
+  staffLabels: readonly (string | undefined)[];
   systems: readonly LaidOutSystem[];
   /** The target width the systems were justified to, in staff spaces */
   width: number;
@@ -21,6 +23,7 @@ export const ScoreLayout = {
     return {
       ...(score.title ? { title: score.title } : {}),
       ...(score.composer ? { composer: score.composer } : {}),
+      staffLabels: score.staves.map((staff) => staff.label),
       systems: LineBreaking.breakIntoSystems(score, options),
       width: options.width,
     };

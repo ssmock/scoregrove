@@ -8,7 +8,7 @@ const melody = Fixtures.monophonicMelody();
 
 describe('LineBreaking.breakIntoSystems', () => {
   it('keeps everything on one ragged system when the width allows', () => {
-    const unbroken = SystemLayout.singleStaff(melody);
+    const unbroken = SystemLayout.unbroken(melody);
     const systems = LineBreaking.breakIntoSystems(melody, { width: unbroken.width + 10 });
 
     expect(systems).toHaveLength(1);
@@ -17,7 +17,7 @@ describe('LineBreaking.breakIntoSystems', () => {
   });
 
   it('fills greedily and justifies every system but the last', () => {
-    const unbroken = SystemLayout.singleStaff(melody);
+    const unbroken = SystemLayout.unbroken(melody);
     const target = unbroken.width * 0.55;
     const systems = LineBreaking.breakIntoSystems(melody, { width: target });
 
@@ -33,7 +33,7 @@ describe('LineBreaking.breakIntoSystems', () => {
   it('accounts for every measure exactly once, in order', () => {
     const systems = LineBreaking.breakIntoSystems(melody, { width: 40 });
     const indices = systems.flatMap((system) =>
-      system.measures.flatMap((entry) => entry.measure.elements.map((e) => e.address.measure)),
+      system.measures.flatMap((entry) => entry.staves[0].elements.map((e) => e.address.measure)),
     );
 
     expect(new Set(indices)).toEqual(new Set([0, 1, 2, 3]));
@@ -46,7 +46,7 @@ describe('LineBreaking.breakIntoSystems', () => {
     expect(systems.length).toBeGreaterThan(1);
 
     systems.slice(1).forEach((system) => {
-      const glyphs = system.measures[0].measure.signatures.map((laid) => laid.glyph);
+      const glyphs = system.measures[0].staves[0].signatures.map((laid) => laid.glyph);
 
       expect(glyphs).toContain('gClef');
       expect(glyphs).toContain('accidentalSharp');
@@ -55,11 +55,11 @@ describe('LineBreaking.breakIntoSystems', () => {
   });
 
   it('stretches spacing under justification without moving signatures', () => {
-    const unbroken = SystemLayout.singleStaff(melody);
+    const unbroken = SystemLayout.unbroken(melody);
     const target = unbroken.width * 0.55;
     const justified = LineBreaking.breakIntoSystems(melody, { width: target })[0];
-    const natural = SystemLayout.singleStaff(melody).measures[0].measure;
-    const stretched = justified.measures[0].measure;
+    const natural = SystemLayout.unbroken(melody).measures[0].staves[0];
+    const stretched = justified.measures[0].staves[0];
 
     expect(stretched.signatures).toEqual(natural.signatures);
     expect(stretched.width).toBeGreaterThan(natural.width);
