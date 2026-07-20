@@ -1,5 +1,6 @@
 import type { Meta, StoryObj } from '@storybook/vue3-vite';
 import App from './App.vue';
+import { withEditorStore } from './store/storybook';
 
 const meta: Meta<typeof App> = {
   title: 'App',
@@ -10,20 +11,12 @@ export default meta;
 
 type Story = StoryObj<typeof meta>;
 
-const mockCounterEndpoint = (respond: () => Promise<Response>) => [
-  async () => {
-    globalThis.fetch = respond;
-  },
-];
-
-export const Loaded: Story = {
-  loaders: mockCounterEndpoint(
-    async () => new Response(JSON.stringify({ value: 3 }), { status: 200 }),
-  ),
+/** The editor view, the app's default */
+export const Editor: Story = {
+  decorators: [withEditorStore()],
 };
 
-export const ServerUnavailable: Story = {
-  loaders: mockCounterEndpoint(async () => {
-    throw new Error('Network error');
-  }),
+/** The performance view, switched to before render */
+export const Performance: Story = {
+  decorators: [withEditorStore({ configure: (store) => store.setView('performance') })],
 };

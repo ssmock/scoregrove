@@ -1,0 +1,61 @@
+/*
+ * Design tokens for the editor UI: hand-rolled chrome on CSS custom
+ * properties, no component-library dependency. One fixed palette (dark cyan
+ * on parchment) rather than switching on prefers-color-scheme — there is no
+ * manual toggle, and no second variant to keep in sync.
+ */
+:root {
+  --color-bg: #f3e9d2;
+  --color-surface: #e9dcbd;
+  --color-surface-raised: #faf4e3;
+  --color-border: #c9b78e;
+  --color-text: #073333;
+  --color-text-muted: #3f6b68;
+  --color-accent: #0e6e6b;
+  --color-accent-text: #f8f1de;
+  --color-danger: #8a3324;
+  --color-danger-text: #f8f1de;
+  --color-focus-ring: #0e6e6b;
+  --color-overlay: rgb(7 51 51 / 40%);
+
+  --space-1: 0.25rem;
+  --space-2: 0.5rem;
+  --space-3: 0.75rem;
+  --space-4: 1rem;
+  --space-5: 1.5rem;
+  --space-6: 2rem;
+
+  --font-ui: system-ui, -apple-system, 'Segoe UI', sans-serif;
+  --text-sm: 0.8125rem;
+  --text-base: 0.9375rem;
+  --text-lg: 1.125rem;
+  --line-height-base: 1.4;
+
+  --radius-sm: 4px;
+  --radius-md: 8px;
+  --radius-lg: 12px;
+
+  --shadow-sm: 0 1px 2px rgb(0 0 0 / 8%);
+  --shadow-md: 0 4px 16px rgb(0 0 0 / 12%);
+  --shadow-lg: 0 12px 40px rgb(0 0 0 / 20%);
+
+  /* Overlays stack in this order; each layer leaves room beneath the next */
+  --z-dropdown: 100;
+  --z-flyout: 200;
+  --z-overlay: 300;
+  --z-dialog: 310;
+  --z-toast: 400;
+
+  --duration-fast: 100ms;
+  --duration-base: 160ms;
+  --easing-standard: cubic-bezier(0.2, 0, 0, 1);
+}
+
+body {
+  margin: 0;
+  font-family: var(--font-ui);
+  font-size: var(--text-base);
+  line-height: var(--line-height-base);
+  color: var(--color-text);
+  background: var(--color-bg);
+}

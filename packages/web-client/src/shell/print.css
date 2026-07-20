@@ -1,0 +1,34 @@
+/*
+ * A first pass at print output: hide interactive chrome (the sidebar, the
+ * performance corner menu, any open dialog/flyout) and let the score flow
+ * as a plain full-width document. Global rather than scoped to a component,
+ * since printing needs to reach across the whole page at once. Vue's
+ * scoped styles only add an extra attribute selector alongside the class —
+ * they don't rename it — so plain class selectors here still match.
+ *
+ * Not yet visually verified against real print/PDF output — see
+ * TO-VERIFY.md.
+ */
+@media print {
+  .sidebar,
+  .performance-view__corner,
+  .app-dialog-overlay,
+  .app-flyout {
+    display: none !important;
+  }
+
+  body {
+    background: white;
+  }
+
+  .editor-view,
+  .performance-view {
+    height: auto;
+    overflow: visible;
+  }
+
+  .editor-view__stage {
+    padding: 0;
+    overflow: visible;
+  }
+}

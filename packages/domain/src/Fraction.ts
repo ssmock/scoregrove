@@ -43,6 +43,13 @@ export const Fraction = {
     );
   },
 
+  /**
+   * a − b, exact. May be negative — a fraction's numerator carries the sign.
+   */
+  subtract(a: Fraction, b: Fraction): Fraction {
+    return Fraction.add(a, Fraction.of(-b.numerator, b.denominator));
+  },
+
   multiply(a: Fraction, b: Fraction): Fraction {
     return Fraction.of(a.numerator * b.numerator, a.denominator * b.denominator);
   },

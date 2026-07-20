@@ -1,4 +1,5 @@
 import type { Preview } from '@storybook/vue3-vite';
+import '../src/ui/tokens.css';
 import '../src/music/smufl.css';
 import { loadMusicFont } from '../src/music/fonts';
 

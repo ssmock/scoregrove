@@ -23,6 +23,12 @@ describe('Fraction', () => {
     expect(Fraction.add(Fraction.of(1, 8), Fraction.of(1, 12))).toEqual(Fraction.of(5, 24));
   });
 
+  it('subtracts exactly, including past zero', () => {
+    expect(Fraction.subtract(Fraction.of(3, 4), Fraction.of(1, 4))).toEqual(Fraction.of(1, 2));
+    expect(Fraction.subtract(Fraction.of(1, 4), Fraction.of(3, 4))).toEqual(Fraction.of(-1, 2));
+    expect(Fraction.subtract(Fraction.of(1, 3), Fraction.of(1, 3))).toEqual(Fraction.zero());
+  });
+
   it('multiplies exactly', () => {
     expect(Fraction.multiply(Fraction.of(1, 8), Fraction.of(2, 3))).toEqual(Fraction.of(1, 12));
     expect(Fraction.multiply(Fraction.of(1, 4), Fraction.of(3, 2))).toEqual(Fraction.of(3, 8));

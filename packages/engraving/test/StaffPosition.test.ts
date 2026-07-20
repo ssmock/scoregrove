@@ -20,6 +20,28 @@ describe('StaffPosition.of', () => {
   });
 });
 
+describe('StaffPosition.pitch', () => {
+  it('inverts StaffPosition.of back to the same bare-letter pitch', () => {
+    expect(StaffPosition.pitch(Clef.Treble, 0)).toEqual(pitch(PitchLetter.B, 4));
+    expect(StaffPosition.pitch(Clef.Bass, 0)).toEqual(pitch(PitchLetter.D, 3));
+    expect(StaffPosition.pitch(Clef.Alto, 0)).toEqual(pitch(PitchLetter.C, 4));
+    expect(StaffPosition.pitch(Clef.Treble, -4)).toEqual(pitch(PitchLetter.E, 4));
+    expect(StaffPosition.pitch(Clef.Treble, 4)).toEqual(pitch(PitchLetter.F, 5));
+    expect(StaffPosition.pitch(Clef.Treble, -6)).toEqual(pitch(PitchLetter.C, 4));
+  });
+
+  it('never spells an accidental, even for positions the key signature alters', () => {
+    // Position 4 on a treble staff is F5 either way — the key (if any)
+    // decides how it sounds, not this function.
+    expect(StaffPosition.pitch(Clef.Treble, 4).pitchClass.accidental).toBeUndefined();
+  });
+
+  it('round-trips across octave boundaries in both directions', () => {
+    expect(StaffPosition.of(Clef.Treble, StaffPosition.pitch(Clef.Treble, 11))).toBe(11);
+    expect(StaffPosition.of(Clef.Treble, StaffPosition.pitch(Clef.Treble, -11))).toBe(-11);
+  });
+});
+
 describe('StaffPosition.y', () => {
   it('maps positions onto staff spaces from the top line, y downward', () => {
     expect(StaffPosition.y(4)).toBe(0);

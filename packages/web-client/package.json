@@ -8,10 +8,13 @@
     "build": "vite build",
     "preview": "vite preview",
     "storybook": "storybook dev -p 6006",
-    "build-storybook": "storybook build"
+    "build-storybook": "storybook build",
+    "test": "tsc --noEmit -p tsconfig.test.json && vitest run",
+    "test:watch": "vitest"
   },
   "dependencies": {
     "@scoregrove/domain": "workspace:*",
+    "@scoregrove/editing": "workspace:*",
     "@scoregrove/engraving": "workspace:*",
     "vue": "^3.5.40"
   },
@@ -19,6 +22,8 @@
     "@vitejs/plugin-vue": "^6.0.8",
     "typescript": "^7.0.2",
     "vite": "^8.1.5",
+    "vitest": "^4.1.10",
+    "happy-dom": "^15.11.7",
     "storybook": "^10.5.2",
     "@storybook/vue3-vite": "^10.5.2",
     "@storybook/addon-a11y": "^10.5.2",

@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed } from 'vue';
+import { computed, ref } from 'vue';
 import type { LaidOutSystem } from '@scoregrove/engraving/LayoutTree';
 import HairpinView from './HairpinView.vue';
 import MeasureView from './MeasureView.vue';
@@ -16,6 +16,15 @@ import VoltaBracket from './VoltaBracket.vue';
  * prints staff names in a left margin — the first system of a score passes
  * them. The viewBox is in staff spaces; `scale` turns one staff space into
  * screen pixels.
+ *
+ * Pointer events are opt-in: nobody listens in read-only usage (the
+ * performance view, Storybook), and emitting `hover`/`leave`/`activate` in
+ * system-space coordinates costs nothing when unused. This is the only
+ * place that knows the viewBox/scale math, so it's also the natural place
+ * to do the pixel-to-staff-space conversion — the interactive staff (in
+ * web-client's shell) resolves the coordinates into a `StaffHit` and
+ * decides what they mean; this component stays ignorant of scores and
+ * editing entirely.
  */
 const props = withDefaults(
   defineProps<{
@@ -26,6 +35,13 @@ const props = withDefaults(
   { scale: 10, labels: () => [] },
 );
 
+const emit = defineEmits<{
+  hover: [{ x: number; y: number }];
+  leave: [];
+  activate: [{ x: number; y: number }];
+  contextmenu: [{ x: number; y: number; clientX: number; clientY: number }];
+}>();
+
 /** The left margin reserved when any staff prints a label */
 const labelMargin = computed(() => (props.labels.some((label) => label) ? 8 : 0));
 
@@ -35,15 +51,57 @@ const viewBox = computed(
   () =>
     `${-labelMargin.value} ${props.system.top} ${props.system.width + labelMargin.value} ${height.value}`,
 );
+
+const svg = ref<SVGSVGElement | null>(null);
+
+defineExpose({ rootEl: svg });
+
+/**
+ * Converts a pointer event's client coordinates into this system's own
+ * staff-space (viewBox) coordinates, using the rendered/viewBox size ratio
+ * rather than assuming `scale` matches 1:1 — robust to any CSS resizing.
+ */
+function toStaffSpace(event: { clientX: number; clientY: number }): { x: number; y: number } {
+  const rect = svg.value!.getBoundingClientRect();
+  const pxPerUnitX = rect.width / (props.system.width + labelMargin.value);
+  const pxPerUnitY = rect.height / height.value;
+
+  return {
+    x: (event.clientX - rect.left) / pxPerUnitX - labelMargin.value,
+    y: (event.clientY - rect.top) / pxPerUnitY + props.system.top,
+  };
+}
+
+function onPointerMove(event: PointerEvent): void {
+  emit('hover', toStaffSpace(event));
+}
+
+function onPointerLeave(): void {
+  emit('leave');
+}
+
+function onClick(event: MouseEvent): void {
+  emit('activate', toStaffSpace(event));
+}
+
+function onContextmenu(event: MouseEvent): void {
+  event.preventDefault();
+  emit('contextmenu', { ...toStaffSpace(event), clientX: event.clientX, clientY: event.clientY });
+}
 </script>
 
 <template>
   <svg
+    ref="svg"
     :viewBox="viewBox"
     :width="(props.system.width + labelMargin) * props.scale"
     :height="height * props.scale"
     role="img"
     aria-label="Music notation system"
+    @pointermove="onPointerMove"
+    @pointerleave="onPointerLeave"
+    @click="onClick"
+    @contextmenu="onContextmenu"
   >
     <g
       v-for="(staffY, staffIndex) in props.system.staffYs"
@@ -80,5 +138,10 @@ const viewBox = computed(
         />
       </template>
     </g>
+    <!--
+      System-space overlay for interactive callers (hover highlight, ghost
+      preview) — unused, and so invisible, when nobody provides it.
+    -->
+    <slot name="overlay" />
   </svg>
 </template>

@@ -1,5 +1,5 @@
 import { Clef } from '@scoregrove/domain/Clef';
-import { PitchLetter, type Pitch } from '@scoregrove/domain/Pitch';
+import { Octave, Pitch, PitchClass, PitchLetter } from '@scoregrove/domain/Pitch';
 
 /**
  * A vertical location on a five-line staff, counted in half staff spaces from
@@ -18,6 +18,17 @@ const letterSteps: Record<PitchLetter, number> = {
   A: 5,
   B: 6,
 };
+
+/** `letterSteps` inverted, indexed by diatonic step mod 7 */
+const lettersByStep: readonly PitchLetter[] = [
+  PitchLetter.C,
+  PitchLetter.D,
+  PitchLetter.E,
+  PitchLetter.F,
+  PitchLetter.G,
+  PitchLetter.A,
+  PitchLetter.B,
+];
 
 /**
  * Diatonic steps of a pitch above C0, ignoring accidentals — the scale that
@@ -39,6 +50,23 @@ const middleLineIndex: Record<Clef, number> = {
 export const StaffPosition = {
   of(clef: Clef, pitch: Pitch): StaffPosition {
     return diatonicIndex(pitch) - middleLineIndex[clef];
+  },
+
+  /**
+   * The inverse of `of`: the bare-letter pitch (no accidental) sitting at a
+   * staff position for a clef. Deliberately never spells an accidental — an
+   * absent accidental already means "follow the key signature" (the
+   * domain's own convention), so a click at this position sounds exactly as
+   * the key dictates without this function needing to know the key at all.
+   * Overriding to a different accidental is a later, explicit edit (the
+   * right-click flyout), not something clicking the staff itself decides.
+   */
+  pitch(clef: Clef, position: StaffPosition): Pitch {
+    const index = position + middleLineIndex[clef];
+    const octave = Math.floor(index / 7);
+    const letter = lettersByStep[((index % 7) + 7) % 7];
+
+    return Pitch.of(PitchClass.of(letter), Octave.of(octave));
   },
 
   /**
