@@ -83,6 +83,34 @@ function eraseAt(hit: StaffHit): void {
   store.erase(realAddress(hit), pitchAt(hit));
 }
 
+/**
+ * Re-resolves a hit's address by onset rather than trusting `hit.elementIndex`
+ * directly. A fresh click's hit is always accurate at the moment it's used
+ * (`onActivate`/`onContextmenu` resolve it synchronously from the current
+ * layout), but the hotkeys below reuse the last hover position — updated
+ * only on pointermove — which can go stale the instant one hotkey's own
+ * mutation reshapes the elements array (erase merges/re-decomposes
+ * surrounding rests) without the mouse having moved for a second press to
+ * pick up. Onset doesn't drift the way an index can, so re-resolving
+ * through it (the same trick `store.resolveAddress` already applies for the
+ * right-click flyout) keeps repeated hotkey presses acting on whatever's
+ * actually there now. Like any onset lookup, this skips dynamics — a hotkey
+ * acts on the sounding note/rest/chord at this onset, never a dynamic mark;
+ * erasing a dynamic still works precisely via a click.
+ */
+function hoveredAddress(hit: StaffHit): ScoreAddress | undefined {
+  const staff = projection.value.staffMap[hit.staffIndex];
+
+  return store.resolveAddress({ measure: hit.measureIndex, staff, voice: 0 }, hit.onset);
+}
+
+/** The hotkey counterpart to `eraseAt`, re-resolving first since the hover it acts on may be stale */
+function eraseHovered(hit: StaffHit): void {
+  const address = hoveredAddress(hit);
+
+  if (address) store.erase(address, pitchAt(hit));
+}
+
 function onHoverVertical(point: HoverPoint): void {
   if (props.interactive) hover.value = point;
 }
@@ -233,9 +261,14 @@ useHotkeys(
 
       event.preventDefault();
 
+      const address = hoveredAddress(hit);
+
+      if (!address) return;
+
       const elements =
-        projected.value.measures[hit.measureIndex]?.contents[hit.staffIndex]?.voices[0]?.elements;
-      const target = elements?.[hit.elementIndex];
+        store.state.score.measures[address.measure]?.contents[address.staff]?.voices[address.voice]
+          ?.elements;
+      const target = elements?.[address.element];
 
       if (target?.kind !== 'note' && target?.kind !== 'rest') return;
 
@@ -261,7 +294,7 @@ useHotkeys(
       if (!hit) return;
 
       event.preventDefault();
-      eraseAt(hit);
+      eraseHovered(hit);
     },
     Delete(event) {
       const hit = hover.value?.hit;
@@ -269,7 +302,7 @@ useHotkeys(
       if (!hit) return;
 
       event.preventDefault();
-      eraseAt(hit);
+      eraseHovered(hit);
     },
     ArrowUp(event) {
       const hit = hover.value?.hit;
@@ -277,7 +310,10 @@ useHotkeys(
       if (!hit) return;
 
       event.preventDefault();
-      store.transposeNote(realAddress(hit), 1);
+
+      const address = hoveredAddress(hit);
+
+      if (address) store.transposeNote(address, 1);
     },
     ArrowDown(event) {
       const hit = hover.value?.hit;
@@ -285,7 +321,10 @@ useHotkeys(
       if (!hit) return;
 
       event.preventDefault();
-      store.transposeNote(realAddress(hit), -1);
+
+      const address = hoveredAddress(hit);
+
+      if (address) store.transposeNote(address, -1);
     },
     // `event.key` reflects Shift, so Ctrl+Shift+Z reports "Z", not "z" —
     // both map to the same handler rather than relying on one key casing
