@@ -236,6 +236,157 @@ describe('createEditorStore place/erase and undo', () => {
   });
 });
 
+describe('createEditorStore ties', () => {
+  const quarter = Duration.of(NoteValue.Quarter);
+
+  const withTwoAdjacentNotes = (): ReturnType<typeof createEditorStore> => {
+    const store = createEditorStore();
+
+    store.place(
+      { measure: 0, staff: 0, voice: 0, onset: Fraction.zero() },
+      {
+        kind: 'note',
+        pitch: g4,
+        duration: quarter,
+      },
+    );
+    store.place(
+      { measure: 0, staff: 0, voice: 0, onset: Fraction.of(1, 4) },
+      {
+        kind: 'note',
+        pitch: g4,
+        duration: quarter,
+      },
+    );
+
+    return store;
+  };
+
+  it('startTie engages tie mode and records the pending address', () => {
+    const store = withTwoAdjacentNotes();
+
+    store.startTie(noteAt(0));
+
+    expect(store.state.tieMode).toBe(true);
+    expect(store.state.pendingTie).toEqual(noteAt(0));
+
+    store.dispose();
+  });
+
+  it('closeTie ties the pending note into the given one, then clears pendingTie', () => {
+    const store = withTwoAdjacentNotes();
+
+    store.startTie(noteAt(0));
+    const result = store.closeTie(noteAt(1));
+
+    expect(Result.isOk(result)).toBe(true);
+    expect(store.state.pendingTie).toBeNull();
+    expect(store.state.tieMode).toBe(true);
+    expect(
+      (store.state.score.measures[0].contents[0].voices[0].elements[0] as { tie?: string }).tie,
+    ).toBe('Begin');
+    expect(
+      (store.state.score.measures[0].contents[0].voices[0].elements[1] as { tie?: string }).tie,
+    ).toBe('End');
+
+    store.dispose();
+  });
+
+  it('a failed closeTie leaves pendingTie set for another attempt', () => {
+    const store = withTwoAdjacentNotes();
+
+    store.startTie(noteAt(1)); // not the first note, so closing "into" it later won't match adjacency
+    const result = store.closeTie(noteAt(0)); // note 0 comes before, not after, note 1
+
+    expect(Result.isError(result)).toBe(true);
+    expect(store.state.pendingTie).toEqual(noteAt(1));
+
+    store.dispose();
+  });
+
+  it('closeTie fails when no tie is pending', () => {
+    const store = withTwoAdjacentNotes();
+
+    const result = store.closeTie(noteAt(1));
+
+    expect(Result.isError(result)).toBe(true);
+
+    store.dispose();
+  });
+
+  it('removeTie clears a tie without erasing the note', () => {
+    const store = withTwoAdjacentNotes();
+
+    store.startTie(noteAt(0));
+    store.closeTie(noteAt(1));
+    const result = store.removeTie(noteAt(0));
+
+    expect(Result.isOk(result)).toBe(true);
+    expect(
+      (store.state.score.measures[0].contents[0].voices[0].elements[0] as { tie?: string }).tie,
+    ).toBeUndefined();
+    expect(
+      (store.state.score.measures[0].contents[0].voices[0].elements[1] as { kind: string }).kind,
+    ).toBe('note');
+
+    store.dispose();
+  });
+
+  it('erasing a tied note removes the tie as part of the erase', () => {
+    const store = withTwoAdjacentNotes();
+
+    store.startTie(noteAt(0));
+    store.closeTie(noteAt(1));
+    const result = store.erase(noteAt(0));
+
+    expect(Result.isOk(result)).toBe(true);
+    expect(store.state.score.measures[0].contents[0].voices[0].elements[0]).toMatchObject({
+      kind: 'rest',
+    });
+    expect(
+      (store.state.score.measures[0].contents[0].voices[0].elements[1] as { tie?: string }).tie,
+    ).toBeUndefined();
+
+    store.dispose();
+  });
+
+  it('selectTool cancels a pending tie and tie mode', () => {
+    const store = withTwoAdjacentNotes();
+
+    store.startTie(noteAt(0));
+    store.selectTool(quarterNote);
+
+    expect(store.state.tieMode).toBe(false);
+    expect(store.state.pendingTie).toBeNull();
+
+    store.dispose();
+  });
+
+  it('setEraserMode cancels a pending tie and tie mode', () => {
+    const store = withTwoAdjacentNotes();
+
+    store.startTie(noteAt(0));
+    store.setEraserMode('element');
+
+    expect(store.state.tieMode).toBe(false);
+    expect(store.state.pendingTie).toBeNull();
+
+    store.dispose();
+  });
+
+  it('setTieMode clears activeTool/eraserMode when engaged', () => {
+    const store = createEditorStore();
+
+    store.selectTool(quarterNote);
+    store.setTieMode(true);
+
+    expect(store.state.activeTool).toBeNull();
+    expect(store.state.tieMode).toBe(true);
+
+    store.dispose();
+  });
+});
+
 describe('createEditorStore staff operations', () => {
   it('adds a staff and commits it to history', () => {
     const store = createEditorStore();

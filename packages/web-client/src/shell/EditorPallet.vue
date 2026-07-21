@@ -93,6 +93,9 @@ function pickEraser(mode: EraserMode): void {
         <template #icon><MusicIcon glyph="restQuarter" :size="18" /></template>
         Rest
       </AppButton>
+      <AppButton :pressed="store.state.tieMode" @click="store.setTieMode(!store.state.tieMode)">
+        Tie
+      </AppButton>
     </div>
 
     <AppFlyout :open="flyoutKind !== null" :anchor="flyoutAnchor" @close="flyoutKind = null">
@@ -116,6 +119,11 @@ function pickEraser(mode: EraserMode): void {
         :size="18"
       />
       <span>ready to place</span>
+    </div>
+
+    <div v-if="store.state.tieMode" class="pallet__active">
+      <span v-if="store.state.pendingTie">click the next note to close the tie</span>
+      <span v-else>click a note to start a tie</span>
     </div>
 
     <div v-if="store.state.recents.length" class="pallet__recents">

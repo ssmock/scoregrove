@@ -184,6 +184,24 @@ function place(hit: StaffHit): void {
   store.place(address, { kind: 'note', pitch, duration: tool.duration, notations });
 }
 
+/**
+ * The tie tool's click: the first click on an untied note starts the tie,
+ * the second click on another note closes it (or fails and leaves the
+ * first one still pending, so a misclick isn't costly). Clicking anything
+ * but a plain note is a no-op — chords, rests, and dynamics can't tie.
+ */
+function tieClickAt(hit: StaffHit): void {
+  const elements =
+    projected.value.measures[hit.measureIndex]?.contents[hit.staffIndex]?.voices[0]?.elements;
+
+  if (elements?.[hit.elementIndex]?.kind !== 'note') return;
+
+  const address = realAddress(hit);
+
+  if (!store.state.pendingTie) store.startTie(address);
+  else store.closeTie(address);
+}
+
 function onActivate({ hit }: { hit: StaffHit }): void {
   if (!props.interactive) return;
 
@@ -195,6 +213,12 @@ function onActivate({ hit }: { hit: StaffHit }): void {
 
   if (store.state.eraserMode === 'element') {
     eraseAt(hit);
+
+    return;
+  }
+
+  if (store.state.tieMode) {
+    tieClickAt(hit);
 
     return;
   }
@@ -227,7 +251,9 @@ function onContextmenu({
 }
 
 const ghostGlyph = computed(() => {
-  if (!props.interactive || !hover.value?.hit || store.state.eraserMode) return null;
+  if (!props.interactive || !hover.value?.hit || store.state.eraserMode || store.state.tieMode) {
+    return null;
+  }
 
   const tool = store.state.activeTool;
 
@@ -240,6 +266,10 @@ const ghostGlyph = computed(() => {
 
 const showEraseHighlight = computed(
   () => props.interactive && !!hover.value?.hit && !!store.state.eraserMode,
+);
+
+const showTieHighlight = computed(
+  () => props.interactive && !!hover.value?.hit && store.state.tieMode,
 );
 
 function undoRedo(event: KeyboardEvent): void {
@@ -370,6 +400,13 @@ useHotkeys(
             r="1.2"
             class="hit-highlight"
           />
+          <circle
+            v-else-if="showTieHighlight"
+            :cx="hover.x"
+            :cy="hover.y"
+            r="1.2"
+            class="tie-highlight"
+          />
         </template>
       </template>
     </ScoreView>
@@ -398,6 +435,13 @@ useHotkeys(
               :cy="hover.y"
               r="1.2"
               class="hit-highlight"
+            />
+            <circle
+              v-else-if="showTieHighlight"
+              :cx="hover.x"
+              :cy="hover.y"
+              r="1.2"
+              class="tie-highlight"
             />
           </template>
         </template>
@@ -433,6 +477,12 @@ useHotkeys(
 
 .hit-highlight {
   fill: var(--color-danger);
+  opacity: 0.3;
+  pointer-events: none;
+}
+
+.tie-highlight {
+  fill: var(--color-accent);
   opacity: 0.3;
   pointer-events: none;
 }

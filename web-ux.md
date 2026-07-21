@@ -195,15 +195,29 @@ shell, then the feature steps of TODO-UX.md.
 - [x] Keyboard shortcuts reference — a subtle `AppButton` `link` variant opens a static
       `HotkeysDialog` listing every hotkey; not generated from the hotkey map, so it needs
       updating by hand if that map changes
+- [x] Ties — a pallet tool (click a note to start, click the next same-pitch note to close) and
+      a right-click flyout "Start Tie"/"Remove Tie". `Placement.closeTie`/`removeTie` are the
+      only adjacency a tie ever has: the next sounded (non-dynamic) element after the start note,
+      matching pitch, which may cross a measure boundary — the same rule `Score.check` and the
+      renderer already resolve ties through, so a closed tie always passes both. `erase` now
+      cleans up a tied note's partner automatically instead of refusing it (slurs still refuse).
+      Store-level `tieMode`/`pendingTie` are mutually exclusive with `activeTool`/`eraserMode`,
+      same pattern as the eraser; changing tool/eraser mode cancels a pending tie, a failed close
+      attempt leaves it pending for another try. Chains across three or more measures build one
+      link at a time — closing a tie into a note may leave it with an `End` role already, and
+      `closeTie` promotes that to `Both` rather than refusing, so clicking that same note again to
+      start the next link works. Chords aren't supported (tie creation/removal only targets a
+      plain `Note`, matching every other chord-adjacent limitation above)
 
 ## Major assumptions
 
 - Mouse + keyboard only to start — no touch, no responsive sidebar collapse.
 - Single-voice editing (voice 1). Chords are placeable and single tones erasable (clicking a
   second note onto an occupied beat of the same duration forms/extends one); dot cycle,
-  articulation toggle, transposition, and the right-click flyout still only work on a plain
-  `Note`, not a chord tone. Multi-voice input, ties, slurs, dynamics, lyrics render if present in
-  a loaded score but are not editable yet.
+  articulation toggle, transposition, tying, and the right-click flyout still only work on a
+  plain `Note`, not a chord tone. Ties between two plain notes are addable/removable (pallet tool
+  or right-click flyout). Multi-voice input, slurs, dynamics, lyrics render if present in a
+  loaded score but are not editable yet.
 - The pallet never represents pitches; pitch comes from the click's staff position, spelling
   from the tool's accidental or the arrow-stepping policy.
 - Recents are tool configurations (kind + duration + dots + articulations + accidental);

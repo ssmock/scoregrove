@@ -79,14 +79,24 @@ type EditorState = {
   flow: Flow;
   hiddenStaves: ReadonlySet<number>;
   /**
-   * What a click on the staff does next: place with `activeTool`, or erase
-   * (one element, or a whole bar) if `eraserMode` is set instead. The two
-   * are mutually exclusive — picking one clears the other — so the
-   * interactive staff (a sibling of the pallet, not a descendant) has one
-   * unambiguous place to read "what happens if I click right now."
+   * What a click on the staff does next: place with `activeTool`, erase
+   * (one element, or a whole bar) if `eraserMode` is set, or tie/close a tie
+   * if `tieMode` is set. All three are mutually exclusive — picking one
+   * clears the others — so the interactive staff (a sibling of the pallet,
+   * not a descendant) has one unambiguous place to read "what happens if I
+   * click right now."
    */
   activeTool: ToolConfig | null;
   eraserMode: EraserMode | null;
+  /** The tie pallet tool (or the right-click flyout's "start tie") is selected */
+  tieMode: boolean;
+  /**
+   * The note that started a tie, awaiting a second click on the note it
+   * ties into. Cleared by picking a different tool/eraser mode, or by
+   * successfully closing the tie — an unsuccessful attempt (wrong note
+   * clicked) leaves it pending, so a misclick doesn't force starting over.
+   */
+  pendingTie: ScoreAddress | null;
   recents: readonly ToolConfig[];
 };
 
@@ -114,6 +124,8 @@ export function createEditorStore(initial: Score = blankScore()) {
     hiddenStaves: new Set(),
     activeTool: null,
     eraserMode: null,
+    tieMode: false,
+    pendingTie: null,
     recents: [],
   });
 
@@ -271,18 +283,73 @@ export function createEditorStore(initial: Score = blankScore()) {
      * Selects a tool for the next placement and promotes it to the top of
      * recents — used both by an ordinary pallet click and by the "p"
      * eyedropper (pick up the hovered element's configuration). Clears any
-     * active eraser mode, since placing and erasing are mutually exclusive.
+     * active eraser mode or pending tie, since placing, erasing, and tying
+     * are mutually exclusive.
      */
     selectTool(config: ToolConfig): void {
       state.activeTool = config;
       state.eraserMode = null;
+      state.tieMode = false;
+      state.pendingTie = null;
       state.recents = promote(state.recents, config);
     },
 
-    /** Sets (or clears, with `null`) the active eraser mode; clears activeTool */
+    /** Sets (or clears, with `null`) the active eraser mode; clears activeTool and any pending tie */
     setEraserMode(mode: EraserMode | null): void {
       state.eraserMode = mode;
+      state.tieMode = false;
+      state.pendingTie = null;
       if (mode) state.activeTool = null;
+    },
+
+    /** Toggles the tie pallet tool; clears activeTool/eraserMode and any pending tie */
+    setTieMode(active: boolean): void {
+      state.tieMode = active;
+      state.pendingTie = null;
+
+      if (active) {
+        state.activeTool = null;
+        state.eraserMode = null;
+      }
+    },
+
+    /**
+     * Starts a tie from `address` — a click on an untied note while the tie
+     * tool is active, or the right-click flyout's "start tie." Also engages
+     * tie mode itself, so starting a tie from the flyout (without the pallet
+     * tool selected) still leaves the interactive staff expecting a closing
+     * click next.
+     */
+    startTie(address: ScoreAddress): void {
+      state.tieMode = true;
+      state.activeTool = null;
+      state.eraserMode = null;
+      state.pendingTie = address;
+    },
+
+    /**
+     * Closes the pending tie into `endAddress`. On success, clears
+     * `pendingTie` but stays in tie mode, ready for the next pair. On
+     * failure (the clicked note wasn't a valid match), leaves `pendingTie`
+     * as-is so the user can just click again.
+     */
+    closeTie(endAddress: ScoreAddress): Result<Score> {
+      if (!state.pendingTie) return Result.invalid('No tie is pending');
+
+      const result = commitResult(Placement.closeTie(state.score, state.pendingTie, endAddress));
+
+      if (Result.isOk(result)) state.pendingTie = null;
+
+      return result;
+    },
+
+    /**
+     * The right-click flyout's "remove tie" — `erase` cleans up a tied
+     * note's partner on its own via `Placement.removeTie`, so this is only
+     * needed to drop a tie without removing the note itself.
+     */
+    removeTie(address: ScoreAddress): Result<Score> {
+      return commitResult(Placement.removeTie(state.score, address));
     },
 
     /** The "-"/"=" hotkeys: steps the active tool's duration, promoting like any other pick */

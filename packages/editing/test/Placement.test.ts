@@ -425,14 +425,23 @@ describe('Placement.erase', () => {
     expectInvalid(Placement.erase(score, addressAt(1), g4));
   });
 
-  it('refuses to erase a note carrying a tie role', () => {
+  it('erasing a tied note removes the tie, leaving its partner untied', () => {
     const score = scoreWith([
       Note.of(c4, half, { tie: TieRole.Begin }),
       Note.of(c4, half, { tie: TieRole.End }),
     ]);
 
-    expectInvalid(Placement.erase(score, addressAt(0)));
-    expectInvalid(Placement.erase(score, addressAt(1)));
+    const erasedBegin = expectOk(Placement.erase(score, addressAt(0)));
+
+    expectScoreCheckOk(erasedBegin);
+    expect(voiceElements(erasedBegin)[0]).toEqual(Rest.of(half));
+    expect(voiceElements(erasedBegin)[1]).toEqual(Note.of(c4, half));
+
+    const erasedEnd = expectOk(Placement.erase(score, addressAt(1)));
+
+    expectScoreCheckOk(erasedEnd);
+    expect(voiceElements(erasedEnd)[0]).toEqual(Note.of(c4, half));
+    expect(voiceElements(erasedEnd)[1]).toEqual(Rest.of(half));
   });
 
   it('refuses to erase a note carrying a slur role', () => {
@@ -864,5 +873,267 @@ describe('Placement.elementAtOnset', () => {
     expect(
       Placement.elementAtOnset(score, { measure: 9, staff: 0, voice: 0 }, Fraction.zero()),
     ).toBeUndefined();
+  });
+});
+
+describe('Placement.closeTie', () => {
+  it('ties two adjacent same-pitch notes within one measure', () => {
+    const score = scoreWith([Note.of(g4, half), Note.of(g4, half)]);
+
+    const tied = expectOk(Placement.closeTie(score, addressAt(0), addressAt(1)));
+
+    expectScoreCheckOk(tied);
+    expect(voiceElements(tied)[0]).toEqual(Note.of(g4, half, { tie: TieRole.Begin }));
+    expect(voiceElements(tied)[1]).toEqual(Note.of(g4, half, { tie: TieRole.End }));
+  });
+
+  it('skips a dynamic between the two notes', () => {
+    const score = scoreWith([
+      Note.of(g4, half),
+      DynamicElement.of(DynamicMark.Forte),
+      Note.of(g4, half),
+    ]);
+
+    const tied = expectOk(Placement.closeTie(score, addressAt(0), addressAt(2)));
+
+    expectScoreCheckOk(tied);
+    expect(voiceElements(tied)[0]).toEqual(Note.of(g4, half, { tie: TieRole.Begin }));
+    expect(voiceElements(tied)[2]).toEqual(Note.of(g4, half, { tie: TieRole.End }));
+  });
+
+  it('ties across a measure boundary', () => {
+    const staves = [Staff.of(Clef.Treble)];
+    const score = buildScore({
+      time: fourFour,
+      staves,
+      measures: [
+        measureWith([Note.of(g4, whole)]),
+        measureWith([Note.of(g4, half), Rest.of(half)]),
+      ],
+    });
+
+    const tied = expectOk(
+      Placement.closeTie(
+        score,
+        { measure: 0, staff: 0, voice: 0, element: 0 },
+        { measure: 1, staff: 0, voice: 0, element: 0 },
+      ),
+    );
+
+    expectScoreCheckOk(tied);
+    expect(tied.measures[0].contents[0].voices[0].elements[0]).toEqual(
+      Note.of(g4, whole, { tie: TieRole.Begin }),
+    );
+    expect(tied.measures[1].contents[0].voices[0].elements[0]).toEqual(
+      Note.of(g4, half, { tie: TieRole.End }),
+    );
+  });
+
+  it('extends a chain across three measures, promoting the middle note to Both', () => {
+    const staves = [Staff.of(Clef.Treble)];
+    const score = buildScore({
+      time: fourFour,
+      staves,
+      measures: [
+        measureWith([Note.of(g4, whole)]),
+        measureWith([Note.of(g4, whole)]),
+        measureWith([Note.of(g4, whole)]),
+      ],
+    });
+
+    const firstLink = expectOk(
+      Placement.closeTie(
+        score,
+        { measure: 0, staff: 0, voice: 0, element: 0 },
+        { measure: 1, staff: 0, voice: 0, element: 0 },
+      ),
+    );
+
+    expectScoreCheckOk(firstLink);
+
+    const secondLink = expectOk(
+      Placement.closeTie(
+        firstLink,
+        { measure: 1, staff: 0, voice: 0, element: 0 },
+        { measure: 2, staff: 0, voice: 0, element: 0 },
+      ),
+    );
+
+    expectScoreCheckOk(secondLink);
+    expect(secondLink.measures[0].contents[0].voices[0].elements[0]).toEqual(
+      Note.of(g4, whole, { tie: TieRole.Begin }),
+    );
+    expect(secondLink.measures[1].contents[0].voices[0].elements[0]).toEqual(
+      Note.of(g4, whole, { tie: TieRole.Both }),
+    );
+    expect(secondLink.measures[2].contents[0].voices[0].elements[0]).toEqual(
+      Note.of(g4, whole, { tie: TieRole.End }),
+    );
+  });
+
+  it('refuses when the begin address is not a note', () => {
+    const score = scoreWith([Rest.of(half), Note.of(g4, half)]);
+
+    expectInvalid(Placement.closeTie(score, addressAt(0), addressAt(1)));
+  });
+
+  it('refuses when the begin note already ties forward (Begin or Both)', () => {
+    const score = scoreWith([
+      Note.of(g4, quarter, { tie: TieRole.Begin }),
+      Note.of(g4, quarter, { tie: TieRole.End }),
+      Note.of(g4, quarter),
+      Rest.of(quarter),
+    ]);
+
+    expectInvalid(Placement.closeTie(score, addressAt(0), addressAt(2)));
+
+    const withBoth = scoreWith([
+      Note.of(g4, quarter, { tie: TieRole.Both }),
+      Note.of(g4, quarter),
+      Rest.of(half),
+    ]);
+
+    expectInvalid(Placement.closeTie(withBoth, addressAt(0), addressAt(1)));
+  });
+
+  it('refuses when the end note already has any tie', () => {
+    const score = scoreWith([
+      Note.of(g4, quarter),
+      Note.of(g4, quarter, { tie: TieRole.Begin }),
+      Note.of(g4, quarter, { tie: TieRole.End }),
+      Rest.of(quarter),
+    ]);
+
+    expectInvalid(Placement.closeTie(score, addressAt(0), addressAt(1)));
+  });
+
+  it('refuses when endAddress is not exactly the next sounded element', () => {
+    const score = scoreWith([Note.of(g4, quarter), Note.of(g4, quarter), Note.of(g4, half)]);
+
+    // skips over element 1 straight to element 2 — not adjacent
+    expectInvalid(Placement.closeTie(score, addressAt(0), addressAt(2)));
+  });
+
+  it('refuses when the next element is a rest', () => {
+    const score = scoreWith([Note.of(g4, half), Rest.of(half)]);
+
+    expectInvalid(Placement.closeTie(score, addressAt(0), addressAt(1)));
+  });
+
+  it('refuses a pitch mismatch', () => {
+    const score = scoreWith([Note.of(g4, half), Note.of(a4, half)]);
+
+    expectInvalid(Placement.closeTie(score, addressAt(0), addressAt(1)));
+  });
+
+  it('refuses when the next note already has a tie', () => {
+    const score = scoreWith([
+      Note.of(g4, quarter),
+      Note.of(g4, quarter, { tie: TieRole.Begin }),
+      Note.of(g4, quarter, { tie: TieRole.End }),
+      Rest.of(quarter),
+    ]);
+
+    expectInvalid(Placement.closeTie(score, addressAt(0), addressAt(1)));
+  });
+
+  it('refuses when there is nothing after the begin note', () => {
+    const score = scoreWith([Note.of(g4, whole)]);
+
+    expectInvalid(Placement.closeTie(score, addressAt(0), addressAt(0)));
+  });
+});
+
+describe('Placement.removeTie', () => {
+  it('removes a simple two-note tie, leaving both notes untied', () => {
+    const score = scoreWith([
+      Note.of(g4, half, { tie: TieRole.Begin }),
+      Note.of(g4, half, { tie: TieRole.End }),
+    ]);
+
+    const untied = expectOk(Placement.removeTie(score, addressAt(0)));
+
+    expectScoreCheckOk(untied);
+    expect(voiceElements(untied)[0]).toEqual(Note.of(g4, half));
+    expect(voiceElements(untied)[1]).toEqual(Note.of(g4, half));
+  });
+
+  it('removes the tie from either end', () => {
+    const score = scoreWith([
+      Note.of(g4, half, { tie: TieRole.Begin }),
+      Note.of(g4, half, { tie: TieRole.End }),
+    ]);
+
+    const untied = expectOk(Placement.removeTie(score, addressAt(1)));
+
+    expectScoreCheckOk(untied);
+    expect(voiceElements(untied)[0]).toEqual(Note.of(g4, half));
+    expect(voiceElements(untied)[1]).toEqual(Note.of(g4, half));
+  });
+
+  it('removes a tie across a measure boundary', () => {
+    const staves = [Staff.of(Clef.Treble)];
+    const score = buildScore({
+      time: fourFour,
+      staves,
+      measures: [
+        measureWith([Note.of(g4, whole, { tie: TieRole.Begin })]),
+        measureWith([Note.of(g4, half, { tie: TieRole.End }), Rest.of(half)]),
+      ],
+    });
+
+    const untied = expectOk(
+      Placement.removeTie(score, { measure: 0, staff: 0, voice: 0, element: 0 }),
+    );
+
+    expectScoreCheckOk(untied);
+    expect(untied.measures[0].contents[0].voices[0].elements[0]).toEqual(Note.of(g4, whole));
+    expect(untied.measures[1].contents[0].voices[0].elements[0]).toEqual(Note.of(g4, half));
+  });
+
+  it('downgrades a Both neighbor to just its remaining half, not fully untying it', () => {
+    // A three-note chain: g4 Begin -> g4 Both -> g4 End. Removing the first
+    // link (element 0/1) must leave element 1 still tied forward to element 2.
+    const score = scoreWith([
+      Note.of(g4, quarter, { tie: TieRole.Begin }),
+      Note.of(g4, quarter, { tie: TieRole.Both }),
+      Note.of(g4, quarter, { tie: TieRole.End }),
+      Rest.of(quarter),
+    ]);
+
+    const untied = expectOk(Placement.removeTie(score, addressAt(0)));
+
+    expectScoreCheckOk(untied);
+    expect(voiceElements(untied)[0]).toEqual(Note.of(g4, quarter));
+    expect(voiceElements(untied)[1]).toEqual(Note.of(g4, quarter, { tie: TieRole.Begin }));
+    expect(voiceElements(untied)[2]).toEqual(Note.of(g4, quarter, { tie: TieRole.End }));
+  });
+
+  it('removing a Both note untangles it from both neighbors at once', () => {
+    const score = scoreWith([
+      Note.of(g4, quarter, { tie: TieRole.Begin }),
+      Note.of(g4, quarter, { tie: TieRole.Both }),
+      Note.of(g4, quarter, { tie: TieRole.End }),
+      Rest.of(quarter),
+    ]);
+
+    const untied = expectOk(Placement.removeTie(score, addressAt(1)));
+
+    expectScoreCheckOk(untied);
+    expect(voiceElements(untied)[0]).toEqual(Note.of(g4, quarter));
+    expect(voiceElements(untied)[1]).toEqual(Note.of(g4, quarter));
+    expect(voiceElements(untied)[2]).toEqual(Note.of(g4, quarter));
+  });
+
+  it('refuses a target with no tie', () => {
+    const score = scoreWith([Note.of(g4, whole)]);
+
+    expectInvalid(Placement.removeTie(score, addressAt(0)));
+  });
+
+  it('refuses a non-note target', () => {
+    const score = scoreWith([Rest.of(whole)]);
+
+    expectInvalid(Placement.removeTie(score, addressAt(0)));
   });
 });

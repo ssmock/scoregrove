@@ -60,6 +60,17 @@ function toggleArticulation(articulation: Articulation): void {
   if (address.value) store.toggleArticulation(address.value, articulation);
 }
 
+/** Engages tie mode with this note as the pending start — the same state a pallet-tool click into it would set */
+function startTie(): void {
+  if (address.value) store.startTie(address.value);
+  emit('close');
+}
+
+function removeTie(): void {
+  if (address.value) store.removeTie(address.value);
+  emit('close');
+}
+
 function remove(): void {
   if (address.value) store.erase(address.value);
   emit('close');
@@ -84,6 +95,8 @@ function remove(): void {
           {{ articulation.slice(0, 4) }}
         </AppButton>
       </div>
+      <AppButton v-if="!note.tie" variant="quiet" @click="startTie">Start Tie</AppButton>
+      <AppButton v-else variant="quiet" @click="removeTie">Remove Tie</AppButton>
       <AppButton variant="danger" @click="remove">Remove</AppButton>
     </div>
   </AppFlyout>

@@ -2,7 +2,7 @@ import { Duration } from '@scoregrove/domain/Duration';
 import { Fraction } from '@scoregrove/domain/Fraction';
 import { NonEmptyArray } from '@scoregrove/domain/NonEmptyArray';
 import { Voice, type Measure } from '@scoregrove/domain/Measure';
-import { Chord, Note, Rest, type MeasureElement } from '@scoregrove/domain/MeasureElement';
+import { Chord, Note, Rest, TieRole, type MeasureElement } from '@scoregrove/domain/MeasureElement';
 import type { Articulation, Notations } from '@scoregrove/domain/Notations';
 import { Pitch } from '@scoregrove/domain/Pitch';
 import { Result } from '@scoregrove/domain/Result';
@@ -26,6 +26,87 @@ const onsetBefore = (elements: readonly MeasureElement[], index: number): Fracti
   }
 
   return onset;
+};
+
+type AdjacentElement = { address: ScoreAddress; element: MeasureElement };
+
+/** One staff/voice's element sequence at a given measure, or undefined off the score's edges */
+const elementsAt = (
+  score: Score,
+  measure: number,
+  staff: number,
+  voice: number,
+): readonly MeasureElement[] | undefined =>
+  score.measures[measure]?.contents[staff]?.voices[voice]?.elements;
+
+/**
+ * The next sounded (non-dynamic) element after `address`, continuing into
+ * the following measure's same staff/voice if `address` is the last one in
+ * its own measure — the same adjacency a tie needs (`Score.check` and the
+ * renderer both resolve ties this same way: skip only dynamics, and a tie
+ * can legitimately cross a barline). Undefined at the true end of the piece.
+ */
+const nextElementAddress = (score: Score, address: ScoreAddress): AdjacentElement | undefined => {
+  let measure = address.measure;
+  let index = address.element + 1;
+
+  for (;;) {
+    const elements = elementsAt(score, measure, address.staff, address.voice);
+
+    if (!elements) return undefined;
+
+    while (index < elements.length) {
+      const element = elements[index];
+
+      if (element.kind !== 'dynamic') {
+        return {
+          address: { measure, staff: address.staff, voice: address.voice, element: index },
+          element,
+        };
+      }
+
+      index += 1;
+    }
+
+    measure += 1;
+    index = 0;
+  }
+};
+
+/** The mirror of `nextElementAddress`, walking backward (into the previous measure if needed) */
+const previousElementAddress = (
+  score: Score,
+  address: ScoreAddress,
+): AdjacentElement | undefined => {
+  let measure = address.measure;
+  let index = address.element - 1;
+
+  for (;;) {
+    if (index < 0) {
+      measure -= 1;
+
+      const elements = elementsAt(score, measure, address.staff, address.voice);
+
+      if (!elements) return undefined;
+
+      index = elements.length - 1;
+    }
+
+    const elements = elementsAt(score, measure, address.staff, address.voice);
+
+    if (!elements) return undefined;
+
+    const element = elements[index];
+
+    if (element.kind !== 'dynamic') {
+      return {
+        address: { measure, staff: address.staff, voice: address.voice, element: index },
+        element,
+      };
+    }
+
+    index -= 1;
+  }
 };
 
 /**
@@ -107,6 +188,23 @@ const withVoiceElements = (
     }),
   ),
 });
+
+/** Replaces one element at `address` in place, leaving everything else in its voice untouched */
+const setElementAt = (
+  score: Score,
+  address: ScoreAddress,
+  element: MeasureElement,
+): Result<Score> => {
+  const located = locateVoice(score, address);
+
+  if (!Result.isOk(located)) return Result.mapError(located);
+
+  const newElements = located.value.elements.map((existing, index) =>
+    index === address.element ? element : existing,
+  );
+
+  return Result.ok(withVoiceElements(score, address, newElements));
+};
 
 type OnsetLocation = { index: number; onset: Fraction; element: MeasureElement };
 
@@ -358,10 +456,12 @@ export const Placement = {
    * (unchanged from before chords were placeable), since there's no
    * reasonable single tone to pick.
    *
-   * Refuses a note carrying a tie or slur role: it would otherwise strand
-   * its neighbor's matching role and break `Score.check`, and ties/slurs
-   * aren't user-editable in v1, so the safe move is to leave them alone
-   * rather than repair them.
+   * A tied note's tie is removed first (via `removeTie`, cleaning up
+   * whichever neighbor it's tied to) before the usual rest-merge — erasing a
+   * tied note is exactly "this note is gone," and the tie can't reasonably
+   * survive that. Still refuses a slurred note: repairing a slur isn't
+   * built, and slurs aren't user-editable in v1, so the safe move there
+   * remains leaving it alone rather than guessing at a repair.
    */
   erase(score: Score, address: ScoreAddress, targetPitch?: Pitch): Result<Score> {
     const located = locateVoice(score, address);
@@ -390,16 +490,35 @@ export const Placement = {
       return Result.ok(withVoiceElements(score, address, newElements));
     }
 
-    if (target.kind === 'note' && (target.tie || target.slur)) {
-      return Result.invalid('Erasing a tied or slurred note is not supported yet');
+    if (target.kind === 'note' && target.slur) {
+      return Result.invalid('Erasing a slurred note is not supported yet');
     }
 
+    let workingScore = score;
+    let workingElements = elements;
+
+    if (target.kind === 'note' && target.tie) {
+      const untied = Placement.removeTie(workingScore, address);
+
+      if (!Result.isOk(untied)) return untied;
+
+      workingScore = untied.value;
+
+      const relocated = locateVoice(workingScore, address);
+
+      if (!Result.isOk(relocated)) return relocated;
+
+      workingElements = relocated.value.elements;
+    }
+
+    // `target.duration` (from before any tie cleanup above) still applies —
+    // `removeTie` only ever touches `tie` fields, never duration or kind.
     let startIndex = address.element;
     let endIndex = address.element;
     let mergedDuration = Duration.fractionOfWhole(target.duration);
 
     while (startIndex > 0) {
-      const neighbor = elements[startIndex - 1];
+      const neighbor = workingElements[startIndex - 1];
 
       if (neighbor.kind !== 'rest') break;
 
@@ -407,8 +526,8 @@ export const Placement = {
       mergedDuration = Fraction.add(mergedDuration, Duration.fractionOfWhole(neighbor.duration));
     }
 
-    while (endIndex < elements.length - 1) {
-      const neighbor = elements[endIndex + 1];
+    while (endIndex < workingElements.length - 1) {
+      const neighbor = workingElements[endIndex + 1];
 
       if (neighbor.kind !== 'rest') break;
 
@@ -421,12 +540,12 @@ export const Placement = {
     );
 
     const newElements = [
-      ...elements.slice(0, startIndex),
+      ...workingElements.slice(0, startIndex),
       ...mergedRests,
-      ...elements.slice(endIndex + 1),
+      ...workingElements.slice(endIndex + 1),
     ];
 
-    return Result.ok(withVoiceElements(score, address, newElements));
+    return Result.ok(withVoiceElements(workingScore, address, newElements));
   },
 
   /**
@@ -619,5 +738,123 @@ export const Placement = {
       voice: location.voice,
       element: at.index,
     };
+  },
+
+  /**
+   * Ties `beginAddress` into `endAddress` — the pallet's tie tool, or the
+   * right-click flyout's "start tie," clicking a second note to close it.
+   * `endAddress` must be exactly the next sounded (non-dynamic) element
+   * after `beginAddress` in the same staff/voice, continuing into the next
+   * measure if `beginAddress` is the last one in its own — the only
+   * adjacency `Score.check` and the renderer ever resolve a tie through,
+   * since neither tracks an explicit link between tied notes. Refuses
+   * anything else: a rest or chord in between, or a pitch mismatch.
+   *
+   * `beginAddress` may already carry an `End` role (it received a tie from
+   * *before* it) — that's promoted to `Both` rather than refused, which is
+   * how a tie chain across three or more measures gets built: close a tie
+   * into a note, then start a fresh one from that same note into the next.
+   * `endAddress` must still be completely untied; extending a chain only
+   * ever grows forward one link at a time from its current last note.
+   */
+  closeTie(score: Score, beginAddress: ScoreAddress, endAddress: ScoreAddress): Result<Score> {
+    const beginLocated = locateVoice(score, beginAddress);
+
+    if (!Result.isOk(beginLocated)) return Result.mapError(beginLocated);
+
+    const beginNote = beginLocated.value.elements[beginAddress.element];
+
+    if (!beginNote) return Result.invalid('No element at that address');
+
+    if (beginNote.kind !== 'note') return Result.invalid('Only a placed note can start a tie');
+
+    if (beginNote.tie === TieRole.Begin || beginNote.tie === TieRole.Both) {
+      return Result.invalid('That note already ties forward into another note');
+    }
+
+    const next = nextElementAddress(score, beginAddress);
+
+    if (!next) return Result.invalid('There is nothing after that note to tie into');
+
+    const sameAddress =
+      next.address.measure === endAddress.measure &&
+      next.address.staff === endAddress.staff &&
+      next.address.voice === endAddress.voice &&
+      next.address.element === endAddress.element;
+
+    if (!sameAddress) {
+      return Result.invalid(
+        'A tie must connect to the very next note, with nothing but dynamics in between',
+      );
+    }
+
+    if (next.element.kind !== 'note') return Result.invalid('A tie must connect to another note');
+
+    if (next.element.tie) return Result.invalid('That note already participates in a tie');
+
+    if (!Pitch.equals(next.element.pitch, beginNote.pitch)) {
+      return Result.invalid('A tie must connect notes of the same pitch');
+    }
+
+    const beginRole = beginNote.tie === TieRole.End ? TieRole.Both : TieRole.Begin;
+    const withBegin = setElementAt(score, beginAddress, { ...beginNote, tie: beginRole });
+
+    if (!Result.isOk(withBegin)) return withBegin;
+
+    return setElementAt(withBegin.value, next.address, { ...next.element, tie: TieRole.End });
+  },
+
+  /**
+   * Removes a note's tie, whichever role it carries, cleaning up its
+   * partner note (the previous one for an End/Both role, the next one for
+   * a Begin/Both role, both for Both) — same adjacency `closeTie` connects
+   * them through. A partner still carrying the *other* half of a longer
+   * chain (a `Both`) is downgraded to just that half rather than fully
+   * untied, so removing one link never disturbs a chain beyond it.
+   */
+  removeTie(score: Score, address: ScoreAddress): Result<Score> {
+    const located = locateVoice(score, address);
+
+    if (!Result.isOk(located)) return Result.mapError(located);
+
+    const target = located.value.elements[address.element];
+
+    if (!target) return Result.invalid('No element at that address');
+
+    if (target.kind !== 'note') return Result.invalid('Only a note can have its tie removed');
+
+    if (!target.tie) return Result.invalid('That note has no tie to remove');
+
+    let workingScore = score;
+
+    if (target.tie === TieRole.Begin || target.tie === TieRole.Both) {
+      const next = nextElementAddress(workingScore, address);
+
+      if (next && next.element.kind === 'note' && next.element.tie) {
+        const downgraded = next.element.tie === TieRole.Both ? TieRole.Begin : undefined;
+        const updated = setElementAt(workingScore, next.address, {
+          ...next.element,
+          tie: downgraded,
+        });
+
+        if (Result.isOk(updated)) workingScore = updated.value;
+      }
+    }
+
+    if (target.tie === TieRole.End || target.tie === TieRole.Both) {
+      const previous = previousElementAddress(workingScore, address);
+
+      if (previous && previous.element.kind === 'note' && previous.element.tie) {
+        const downgraded = previous.element.tie === TieRole.Both ? TieRole.End : undefined;
+        const updated = setElementAt(workingScore, previous.address, {
+          ...previous.element,
+          tie: downgraded,
+        });
+
+        if (Result.isOk(updated)) workingScore = updated.value;
+      }
+    }
+
+    return setElementAt(workingScore, address, { ...target, tie: undefined });
   },
 };
