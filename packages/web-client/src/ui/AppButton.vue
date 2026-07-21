@@ -7,10 +7,14 @@ import { ref } from 'vue';
  * omitted, no aria-pressed attribute is rendered at all. Click and other
  * native listeners fall through to the root <button> automatically — this
  * component declares no emits of its own.
+ *
+ * `link` is a subtle, text-only variant (no border/background, underlined) —
+ * for a secondary action that shouldn't compete visually with the primary
+ * chrome around it, e.g. "keyboard shortcuts" next to the pallet's buttons.
  */
 withDefaults(
   defineProps<{
-    variant?: 'default' | 'quiet' | 'danger';
+    variant?: 'default' | 'quiet' | 'danger' | 'link';
     pressed?: boolean;
     disabled?: boolean;
     type?: 'button' | 'submit';
@@ -94,6 +98,20 @@ defineExpose({ rootEl });
   color: var(--color-accent-text);
   background: var(--color-accent);
   border-color: var(--color-accent);
+}
+
+.app-button--link {
+  padding: 0;
+  color: var(--color-text-muted);
+  background: transparent;
+  border: none;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.app-button--link:hover:not(:disabled) {
+  color: var(--color-text);
+  background: transparent;
 }
 
 .app-button__icon {

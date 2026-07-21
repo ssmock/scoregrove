@@ -19,6 +19,7 @@ import { Projects } from '../src/store/Projects';
 
 const noteAt = (element: number): ScoreAddress => ({ measure: 0, staff: 0, voice: 0, element });
 const g4 = Pitch.of(PitchClass.of(PitchLetter.G), Octave.of(4));
+const b4 = Pitch.of(PitchClass.of(PitchLetter.B), Octave.of(4));
 
 const quarterNote: ToolConfig = {
   kind: 'note',
@@ -127,6 +128,51 @@ describe('createEditorStore place/erase and undo', () => {
     expect(Result.isOk(result)).toBe(true);
     expect(store.state.score.measures[0].contents[0].voices[0].elements[0]).toMatchObject({
       kind: 'rest',
+    });
+
+    store.dispose();
+  });
+
+  it('placing a second note at the same beat forms a chord', () => {
+    const store = createEditorStore();
+    const quarter = Duration.of(NoteValue.Quarter);
+
+    store.place(
+      { measure: 0, staff: 0, voice: 0, onset: Fraction.zero() },
+      { kind: 'note', pitch: g4, duration: quarter },
+    );
+    const result = store.place(
+      { measure: 0, staff: 0, voice: 0, onset: Fraction.zero() },
+      { kind: 'note', pitch: b4, duration: quarter },
+    );
+
+    expect(Result.isOk(result)).toBe(true);
+    expect(store.state.score.measures[0].contents[0].voices[0].elements[0]).toMatchObject({
+      kind: 'chord',
+      tones: [{ pitch: g4 }, { pitch: b4 }],
+    });
+
+    store.dispose();
+  });
+
+  it('erasing one tone from a chord (via targetPitch) collapses it back to a note', () => {
+    const store = createEditorStore();
+    const quarter = Duration.of(NoteValue.Quarter);
+
+    store.place(
+      { measure: 0, staff: 0, voice: 0, onset: Fraction.zero() },
+      { kind: 'note', pitch: g4, duration: quarter },
+    );
+    store.place(
+      { measure: 0, staff: 0, voice: 0, onset: Fraction.zero() },
+      { kind: 'note', pitch: b4, duration: quarter },
+    );
+    const result = store.erase(noteAt(0), b4);
+
+    expect(Result.isOk(result)).toBe(true);
+    expect(store.state.score.measures[0].contents[0].voices[0].elements[0]).toMatchObject({
+      kind: 'note',
+      pitch: g4,
     });
 
     store.dispose();
@@ -247,6 +293,43 @@ describe('createEditorStore staff operations', () => {
 
     expect(Result.isOk(result)).toBe(true);
     expect(store.state.score.staves[0]).toEqual({ clef: Clef.Bass, label: 'LH' });
+
+    store.dispose();
+  });
+});
+
+describe('createEditorStore measure operations', () => {
+  it('appends a rest-backed measure', () => {
+    const store = createEditorStore();
+
+    store.addMeasure();
+
+    expect(store.state.score.measures).toHaveLength(2);
+    expect(store.state.undo.past).toHaveLength(1);
+
+    store.dispose();
+  });
+
+  it('removes the last measure', () => {
+    const store = createEditorStore();
+
+    store.addMeasure();
+    const result = store.removeLastMeasure();
+
+    expect(Result.isOk(result)).toBe(true);
+    expect(store.state.score.measures).toHaveLength(1);
+
+    store.dispose();
+  });
+
+  it('refuses to remove the only measure', () => {
+    const store = createEditorStore();
+
+    const result = store.removeLastMeasure();
+
+    expect(Result.isError(result)).toBe(true);
+    expect(store.state.score.measures).toHaveLength(1);
+    expect(store.state.undo.past).toEqual([]);
 
     store.dispose();
   });

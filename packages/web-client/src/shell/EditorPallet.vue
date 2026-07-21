@@ -9,6 +9,7 @@ import MusicIcon from '../ui/MusicIcon.vue';
 import SidebarSection from '../ui/SidebarSection.vue';
 import { sameToolConfig, type EraserMode, type ToolConfig } from '../store/editorStore';
 import { useEditorStore } from '../store/useEditorStore';
+import HotkeysDialog from './HotkeysDialog.vue';
 import StaffDialog from './StaffDialog.vue';
 
 /**
@@ -31,6 +32,7 @@ const noteValues: readonly NoteValue[] = [
 
 const flyoutKind = ref<'note' | 'rest' | null>(null);
 const staffDialogOpen = ref(false);
+const hotkeysDialogOpen = ref(false);
 const noteButton = ref<InstanceType<typeof AppButton> | null>(null);
 const restButton = ref<InstanceType<typeof AppButton> | null>(null);
 
@@ -41,8 +43,14 @@ const flyoutAnchor = computed(() => {
   return null;
 });
 
+/**
+ * The icon-only combined glyph for notes (`forNotehead` alone can't tell
+ * quarter/eighth/sixteenth/etc. apart — they all share one notehead shape,
+ * `noteheadBlack`; only the stem+flags distinguish them). Rests already have
+ * a distinct glyph per duration, so `forRest` is fine as-is.
+ */
 const glyphFor = (kind: 'note' | 'rest', noteValue: NoteValue): GlyphName =>
-  kind === 'note' ? Glyphs.forNotehead(noteValue) : Glyphs.forRest(noteValue);
+  kind === 'note' ? Glyphs.forNoteIcon(noteValue) : Glyphs.forRest(noteValue);
 
 function toggleFlyout(kind: 'note' | 'rest'): void {
   flyoutKind.value = flyoutKind.value === kind ? null : kind;
@@ -140,7 +148,22 @@ function pickEraser(mode: EraserMode): void {
       Staff Setup
     </AppButton>
 
+    <div class="pallet__row">
+      <AppButton @click="store.addMeasure()">Add Measure</AppButton>
+      <AppButton
+        :disabled="store.state.score.measures.length <= 1"
+        @click="store.removeLastMeasure()"
+      >
+        Remove Measure
+      </AppButton>
+    </div>
+
+    <AppButton variant="link" class="pallet__hotkeys-link" @click="hotkeysDialogOpen = true">
+      Keyboard shortcuts
+    </AppButton>
+
     <StaffDialog :open="staffDialogOpen" @close="staffDialogOpen = false" />
+    <HotkeysDialog :open="hotkeysDialogOpen" @close="hotkeysDialogOpen = false" />
   </SidebarSection>
 </template>
 
@@ -207,6 +230,10 @@ function pickEraser(mode: EraserMode): void {
 }
 
 .pallet__staff-button {
+  align-self: flex-start;
+}
+
+.pallet__hotkeys-link {
   align-self: flex-start;
 }
 </style>

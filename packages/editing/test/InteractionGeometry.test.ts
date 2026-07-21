@@ -116,6 +116,28 @@ describe('InteractionGeometry.locate', () => {
     expect(hit?.measureIndex).toBe(1);
   });
 
+  it('locates the right element within a later measure, not just the right measure', () => {
+    // Regression test: `x` is system-relative, but each element's own `x` is
+    // measure-relative — comparing them without subtracting the measure's
+    // own offset biases every non-first measure toward whichever element
+    // has the largest measure-relative x, no matter which one is actually
+    // closest to the click.
+    const secondEntry = system.measures[1];
+    const secondMeasure = secondEntry.staves[0];
+    const secondNote = secondMeasure.elements[1];
+
+    const hit = InteractionGeometry.locate({
+      system,
+      measures: melody.measures,
+      x: secondEntry.x + secondNote.x,
+      y: 2,
+    });
+
+    expect(hit).toMatchObject({ measureIndex: 1, staffIndex: 0, elementIndex: 1 });
+    // the dotted quarter at element 0
+    expect(hit?.onset).toEqual(Fraction.of(3, 8));
+  });
+
   it('returns undefined for a system with no measures', () => {
     const hit = InteractionGeometry.locate({
       system: { ...system, measures: [] },

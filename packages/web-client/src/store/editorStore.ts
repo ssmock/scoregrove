@@ -6,12 +6,13 @@ import { Mode } from '@scoregrove/domain/KeySignature';
 import type { Articulation } from '@scoregrove/domain/Notations';
 import type { NonEmptyString } from '@scoregrove/domain/NonEmptyString';
 import { NonEmptyArray } from '@scoregrove/domain/NonEmptyArray';
-import { PitchClass, PitchLetter } from '@scoregrove/domain/Pitch';
+import { PitchClass, PitchLetter, type Pitch } from '@scoregrove/domain/Pitch';
 import { Result } from '@scoregrove/domain/Result';
 import type { Score } from '@scoregrove/domain/Score';
 import { Staff } from '@scoregrove/domain/Staff';
 import { TimeSignature } from '@scoregrove/domain/TimeSignature';
 import { DurationOps } from '@scoregrove/editing/DurationOps';
+import { MeasureOps } from '@scoregrove/editing/MeasureOps';
 import { Placement, type ElementSpec, type PlacementAddress } from '@scoregrove/editing/Placement';
 import { RestBacking } from '@scoregrove/editing/RestBacking';
 import { StaffOps } from '@scoregrove/editing/StaffOps';
@@ -161,8 +162,13 @@ export function createEditorStore(initial: Score = blankScore()) {
       return commitResult(Placement.place(state.score, address, spec));
     },
 
-    erase(address: ScoreAddress): Result<Score> {
-      return commitResult(Placement.erase(state.score, address));
+    /**
+     * `targetPitch` disambiguates which tone to remove when `address` is a
+     * chord (derived the same way `place` derives a pitch to add — the
+     * eraser click's staff position); ignored for a plain note/rest/dynamic.
+     */
+    erase(address: ScoreAddress, targetPitch?: Pitch): Result<Score> {
+      return commitResult(Placement.erase(state.score, address, targetPitch));
     },
 
     eraseBar(measureIndex: number): Result<Score> {
@@ -232,6 +238,16 @@ export function createEditorStore(initial: Score = blankScore()) {
 
     updateStaff(index: number, clef: Clef, label?: NonEmptyString): Result<Score> {
       return commitResult(StaffOps.updateStaff(state.score, index, clef, label));
+    },
+
+    /** Appends one rest-backed measure at the end — always safe, so no Result */
+    addMeasure(): void {
+      commit(MeasureOps.addMeasure(state.score));
+    },
+
+    /** Removes the last measure; refuses to leave the score empty or strand a tie/slur */
+    removeLastMeasure(): Result<Score> {
+      return commitResult(MeasureOps.removeLastMeasure(state.score));
     },
 
     toggleStaffVisibility(index: number): void {

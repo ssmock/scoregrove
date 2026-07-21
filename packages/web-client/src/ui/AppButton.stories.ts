@@ -32,6 +32,13 @@ export const Danger: Story = {
   }),
 };
 
+export const Link: Story = {
+  render: () => ({
+    components: { AppButton },
+    template: `<AppButton variant="link">Keyboard shortcuts</AppButton>`,
+  }),
+};
+
 /** The pressed state a pallet tool takes while it's the active one */
 export const Pressed: Story = {
   render: () => ({

@@ -266,6 +266,46 @@ export const glyphs = {
       stemDownSW: [0, -1.244],
     },
   },
+  noteDoubleWhole: {
+    codepoint: '\u{E1D0}',
+    bBoxNE: [2.62, 0.68],
+    bBoxSW: [0, -0.672],
+  },
+  noteWhole: {
+    codepoint: '\u{E1D2}',
+    bBoxNE: [1.836, 0.544],
+    bBoxSW: [0, -0.548],
+  },
+  noteHalfUp: {
+    codepoint: '\u{E1D3}',
+    bBoxNE: [1.364, 3.5],
+    bBoxSW: [0, -0.58],
+  },
+  noteQuarterUp: {
+    codepoint: '\u{E1D5}',
+    bBoxNE: [1.328, 3.5],
+    bBoxSW: [0, -0.564],
+  },
+  note8thUp: {
+    codepoint: '\u{E1D7}',
+    bBoxNE: [2.264, 3.492],
+    bBoxSW: [0, -0.552],
+  },
+  note16thUp: {
+    codepoint: '\u{E1D9}',
+    bBoxNE: [2.324, 3.492],
+    bBoxSW: [0, -0.552],
+  },
+  note32ndUp: {
+    codepoint: '\u{E1DB}',
+    bBoxNE: [2.252, 4.092],
+    bBoxSW: [0, -0.552],
+  },
+  note64thUp: {
+    codepoint: '\u{E1DD}',
+    bBoxNE: [2.252, 4.888],
+    bBoxSW: [0, -0.552],
+  },
   accidentalFlat: {
     codepoint: '\u{E260}',
     bBoxNE: [0.904, 1.756],

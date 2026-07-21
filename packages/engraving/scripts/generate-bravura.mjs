@@ -52,6 +52,19 @@ const glyphNames = [
   'flag32ndDown',
   'flag64thUp',
   'flag64thDown',
+  // Individual notes (notehead+stem+flag combined) — used only for icons
+  // (the pallet, recents, ghost preview) where a bare notehead can't show
+  // which duration it is; the actual score always builds notes from the
+  // separate notehead/stem/flag glyphs above so the engraving pipeline can
+  // position and beam them.
+  'noteDoubleWhole',
+  'noteWhole',
+  'noteHalfUp',
+  'noteQuarterUp',
+  'note8thUp',
+  'note16thUp',
+  'note32ndUp',
+  'note64thUp',
   // Accidentals
   'accidentalFlat',
   'accidentalNatural',

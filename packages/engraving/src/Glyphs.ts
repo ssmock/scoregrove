@@ -25,6 +25,24 @@ const noteheadGlyphs: Record<NoteValue, GlyphName> = {
   SixtyFourth: 'noteheadBlack',
 };
 
+/**
+ * Notehead+stem+flag combined into one glyph — every duration quarter and
+ * shorter shares one notehead shape (`noteheadBlack`), so a bare notehead
+ * can't show which is which. Icon-only (the pallet, recents, ghost preview):
+ * the actual score always builds a note from separate notehead/stem/flag
+ * glyphs so the engraving pipeline can position and beam them.
+ */
+const noteIconGlyphs: Record<NoteValue, GlyphName> = {
+  Breve: 'noteDoubleWhole',
+  Whole: 'noteWhole',
+  Half: 'noteHalfUp',
+  Quarter: 'noteQuarterUp',
+  Eighth: 'note8thUp',
+  Sixteenth: 'note16thUp',
+  ThirtySecond: 'note32ndUp',
+  SixtyFourth: 'note64thUp',
+};
+
 const restGlyphs: Record<NoteValue, GlyphName> = {
   Breve: 'restDoubleWhole',
   Whole: 'restWhole',
@@ -96,6 +114,11 @@ export const Glyphs = {
 
   forNotehead(noteValue: NoteValue): GlyphName {
     return noteheadGlyphs[noteValue];
+  },
+
+  /** The icon-only combined notehead+stem+flag glyph — see `noteIconGlyphs` */
+  forNoteIcon(noteValue: NoteValue): GlyphName {
+    return noteIconGlyphs[noteValue];
   },
 
   forRest(noteValue: NoteValue): GlyphName {

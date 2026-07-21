@@ -19,6 +19,7 @@ import { Accidental, PitchLetter } from '@scoregrove/domain/Pitch';
 import { PositiveInteger } from '@scoregrove/domain/PositiveInteger';
 import { Staff } from '@scoregrove/domain/Staff';
 import { BeatUnit, type TimeSignature } from '@scoregrove/domain/TimeSignature';
+import { ContextWalk } from '@scoregrove/engraving/ContextWalk';
 import type { ScoreAddress } from '@scoregrove/engraving/LayoutTree';
 import { Placement } from '../src/Placement';
 import { RestBacking } from '../src/RestBacking';
@@ -191,6 +192,120 @@ describe('Placement.place', () => {
       ),
     );
   });
+
+  it('forms a chord when a note lands on an existing note of the same duration', () => {
+    const score = scoreWith([
+      Note.of(g4, quarter),
+      Rest.of(Duration.of(NoteValue.Half, { dots: 1 })),
+    ]);
+    const placed = expectOk(
+      Placement.place(
+        score,
+        { measure: 0, staff: 0, voice: 0, onset: Fraction.zero() },
+        { kind: 'note', pitch: b4, duration: quarter },
+      ),
+    );
+
+    expectScoreCheckOk(placed);
+    expect(voiceElements(placed)[0]).toEqual(expectOk(Chord.create([g4, b4], quarter)));
+  });
+
+  it('extends an existing chord with a third tone of the same duration', () => {
+    const chord = expectOk(Chord.create([g4, b4], quarter));
+    const score = scoreWith([chord, Rest.of(Duration.of(NoteValue.Half, { dots: 1 }))]);
+    const placed = expectOk(
+      Placement.place(
+        score,
+        { measure: 0, staff: 0, voice: 0, onset: Fraction.zero() },
+        { kind: 'note', pitch: d4, duration: quarter },
+      ),
+    );
+
+    expectScoreCheckOk(placed);
+    expect(voiceElements(placed)[0]).toEqual(expectOk(Chord.create([g4, b4, d4], quarter)));
+  });
+
+  it('preserves the existing note’s articulations when it becomes a chord', () => {
+    const score = scoreWith([
+      Note.of(g4, quarter, { articulations: NonEmptyArray.of([Articulation.Staccato]) }),
+      Rest.of(Duration.of(NoteValue.Half, { dots: 1 })),
+    ]);
+    const placed = expectOk(
+      Placement.place(
+        score,
+        { measure: 0, staff: 0, voice: 0, onset: Fraction.zero() },
+        { kind: 'note', pitch: b4, duration: quarter },
+      ),
+    );
+
+    expect(voiceElements(placed)[0]).toEqual(
+      expectOk(
+        Chord.create([g4, b4], quarter, {
+          articulations: NonEmptyArray.of([Articulation.Staccato]),
+        }),
+      ),
+    );
+  });
+
+  it('refuses to form a chord when the durations differ', () => {
+    const score = scoreWith([
+      Note.of(g4, quarter),
+      Rest.of(Duration.of(NoteValue.Half, { dots: 1 })),
+    ]);
+
+    expectInvalid(
+      Placement.place(
+        score,
+        { measure: 0, staff: 0, voice: 0, onset: Fraction.zero() },
+        { kind: 'note', pitch: b4, duration: half },
+      ),
+    );
+  });
+
+  it('refuses to form a chord from a tied note', () => {
+    const score = scoreWith([
+      Note.of(g4, quarter, { tie: TieRole.Begin }),
+      Rest.of(Duration.of(NoteValue.Half, { dots: 1 })),
+    ]);
+
+    expectInvalid(
+      Placement.place(
+        score,
+        { measure: 0, staff: 0, voice: 0, onset: Fraction.zero() },
+        { kind: 'note', pitch: b4, duration: quarter },
+      ),
+    );
+  });
+
+  it('refuses a duplicate pitch, via Chord.create’s own validation', () => {
+    const score = scoreWith([
+      Note.of(g4, quarter),
+      Rest.of(Duration.of(NoteValue.Half, { dots: 1 })),
+    ]);
+
+    expectInvalid(
+      Placement.place(
+        score,
+        { measure: 0, staff: 0, voice: 0, onset: Fraction.zero() },
+        { kind: 'note', pitch: g4, duration: quarter },
+      ),
+    );
+  });
+
+  it('refuses a rest tool landing on an existing note', () => {
+    const score = scoreWith([
+      Note.of(g4, quarter),
+      Rest.of(Duration.of(NoteValue.Half, { dots: 1 })),
+    ]);
+
+    expectInvalid(
+      Placement.place(
+        score,
+        { measure: 0, staff: 0, voice: 0, onset: Fraction.zero() },
+        { kind: 'rest', duration: quarter },
+      ),
+    );
+  });
 });
 
 describe('Placement.erase', () => {
@@ -255,11 +370,59 @@ describe('Placement.erase', () => {
     expect(voiceElements(erased)).toEqual(RestBacking.wholeMeasureRests(fourFour));
   });
 
-  it('refuses to erase a chord', () => {
+  it('refuses to erase a chord without a target pitch', () => {
     const chord = expectOk(Chord.create([c4, e4], whole));
     const score = scoreWith([chord]);
 
     expectInvalid(Placement.erase(score, addressAt(0)));
+  });
+
+  it('removes one tone from a chord, collapsing to a plain note when one tone remains', () => {
+    const chord = expectOk(Chord.create([g4, b4], quarter));
+    const score = scoreWith([chord, Rest.of(Duration.of(NoteValue.Half, { dots: 1 }))]);
+    const erased = expectOk(Placement.erase(score, addressAt(0), b4));
+
+    expectScoreCheckOk(erased);
+    expect(voiceElements(erased)[0]).toEqual(Note.of(g4, quarter));
+  });
+
+  it('removes one tone from a three-tone chord, staying a chord', () => {
+    const chord = expectOk(Chord.create([g4, b4, d4], quarter));
+    const score = scoreWith([chord, Rest.of(Duration.of(NoteValue.Half, { dots: 1 }))]);
+    const erased = expectOk(Placement.erase(score, addressAt(0), b4));
+
+    expectScoreCheckOk(erased);
+    expect(voiceElements(erased)[0]).toEqual(expectOk(Chord.create([g4, d4], quarter)));
+  });
+
+  it('preserves shared notations when a chord collapses to a note', () => {
+    const chord = expectOk(
+      Chord.create([g4, b4], quarter, { articulations: NonEmptyArray.of([Articulation.Accent]) }),
+    );
+    const score = scoreWith([chord, Rest.of(Duration.of(NoteValue.Half, { dots: 1 }))]);
+    const erased = expectOk(Placement.erase(score, addressAt(0), b4));
+
+    expect(voiceElements(erased)[0]).toEqual(
+      Note.of(g4, quarter, { articulations: NonEmptyArray.of([Articulation.Accent]) }),
+    );
+  });
+
+  it('refuses a target pitch that matches no tone in the chord', () => {
+    const chord = expectOk(Chord.create([g4, b4], quarter));
+    const score = scoreWith([chord, Rest.of(Duration.of(NoteValue.Half, { dots: 1 }))]);
+
+    expectInvalid(Placement.erase(score, addressAt(0), c4));
+  });
+
+  it('refuses to erase part of a tied or slurred chord', () => {
+    const tied = expectOk(
+      Chord.create([{ pitch: g4, tie: TieRole.Begin }, { pitch: b4 }], quarter),
+    );
+    const slurred = expectOk(Chord.create([g4, b4], quarter, { slur: SlurRole.Begin }));
+    const score = scoreWith([tied, slurred, Rest.of(half)]);
+
+    expectInvalid(Placement.erase(score, addressAt(0), g4));
+    expectInvalid(Placement.erase(score, addressAt(1), g4));
   });
 
   it('refuses to erase a note carrying a tie role', () => {
@@ -381,9 +544,89 @@ describe('Placement.eraseBar', () => {
     expect(reset.measures[0].closing).toBe(ClosingBarline.Final);
   });
 
-  it('refuses to reset a measure containing a chord', () => {
+  it('leaves a staff’s clef unset when the measure had no clef change of its own', () => {
+    const staves = [Staff.of(Clef.Treble)];
+    const score = buildScore({
+      time: fourFour,
+      staves,
+      measures: [
+        RestBacking.emptyMeasure(fourFour, staves),
+        {
+          contents: NonEmptyArray.of([
+            StaffContent.singleVoice(NonEmptyArray.of([Note.of(g4, whole)])),
+          ]),
+        },
+      ],
+    });
+
+    const reset = expectOk(Placement.eraseBar(score, 1));
+
+    expectScoreCheckOk(reset);
+    expect(reset.measures[1].contents[0].clef).toBeUndefined();
+  });
+
+  it('preserves a genuine clef change on the measure being reset', () => {
+    const staves = [Staff.of(Clef.Treble)];
+    const score = buildScore({
+      time: fourFour,
+      staves,
+      measures: [
+        RestBacking.emptyMeasure(fourFour, staves),
+        {
+          contents: NonEmptyArray.of([
+            StaffContent.singleVoice(NonEmptyArray.of([Note.of(g4, whole)]), Clef.Bass),
+          ]),
+        },
+      ],
+    });
+
+    const reset = expectOk(Placement.eraseBar(score, 1));
+
+    expectScoreCheckOk(reset);
+    expect(reset.measures[1].contents[0].clef).toBe(Clef.Bass);
+    expect(ContextWalk.walk(reset)[1][0].clef).toBe(Clef.Bass);
+  });
+
+  it('resets a measure containing an ordinary chord, same as any other content', () => {
     const staves = [Staff.of(Clef.Treble)];
     const chord = expectOk(Chord.create([g4, pitch(PitchLetter.B, 4)], whole));
+    const score = buildScore({
+      time: fourFour,
+      staves,
+      measures: [
+        { contents: NonEmptyArray.of([StaffContent.singleVoice(NonEmptyArray.of([chord]))]) },
+      ],
+    });
+
+    const reset = expectOk(Placement.eraseBar(score, 0));
+
+    expectScoreCheckOk(reset);
+    expect(reset.measures[0].contents[0].voices[0].elements).toEqual(
+      RestBacking.wholeMeasureRests(fourFour),
+    );
+  });
+
+  it('refuses to reset a measure containing a chord with a tied tone', () => {
+    const staves = [Staff.of(Clef.Treble)];
+    const chord = expectOk(
+      Chord.create([{ pitch: g4, tie: TieRole.Begin }, { pitch: pitch(PitchLetter.B, 4) }], whole),
+    );
+    const score = buildScore({
+      time: fourFour,
+      staves,
+      measures: [
+        { contents: NonEmptyArray.of([StaffContent.singleVoice(NonEmptyArray.of([chord]))]) },
+      ],
+    });
+
+    expectInvalid(Placement.eraseBar(score, 0));
+  });
+
+  it('refuses to reset a measure containing a slurred chord', () => {
+    const staves = [Staff.of(Clef.Treble)];
+    const chord = expectOk(
+      Chord.create([g4, pitch(PitchLetter.B, 4)], whole, { slur: SlurRole.Begin }),
+    );
     const score = buildScore({
       time: fourFour,
       staves,

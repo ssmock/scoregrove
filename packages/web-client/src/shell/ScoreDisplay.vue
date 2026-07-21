@@ -2,6 +2,7 @@
 import { computed, ref } from 'vue';
 import { Fraction } from '@scoregrove/domain/Fraction';
 import { NonEmptyArray } from '@scoregrove/domain/NonEmptyArray';
+import type { Pitch } from '@scoregrove/domain/Pitch';
 import type { Score } from '@scoregrove/domain/Score';
 import { DisplayProjection } from '@scoregrove/editing/DisplayProjection';
 import { InteractionGeometry, type StaffHit } from '@scoregrove/editing/InteractionGeometry';
@@ -70,6 +71,18 @@ function realAddress(hit: StaffHit): ScoreAddress {
   };
 }
 
+/** The pitch a hit's staff position implies — same derivation `place` uses, needed again to pick a tone out of a chord when erasing */
+function pitchAt(hit: StaffHit): Pitch {
+  const { clef } = ContextWalk.walk(projected.value)[hit.measureIndex][hit.staffIndex];
+
+  return StaffPosition.pitch(clef, hit.position);
+}
+
+/** Erases whatever's at `hit`; if it's a chord, only the tone nearest `hit`'s pitch comes out */
+function eraseAt(hit: StaffHit): void {
+  store.erase(realAddress(hit), pitchAt(hit));
+}
+
 function onHoverVertical(point: HoverPoint): void {
   if (props.interactive) hover.value = point;
 }
@@ -135,8 +148,7 @@ function place(hit: StaffHit): void {
     return;
   }
 
-  const { clef } = ContextWalk.walk(projected.value)[hit.measureIndex][hit.staffIndex];
-  const pitch = StaffPosition.pitch(clef, hit.position);
+  const pitch = pitchAt(hit);
   const notations = tool.articulations?.length
     ? { articulations: NonEmptyArray.of([...tool.articulations]) }
     : undefined;
@@ -154,7 +166,7 @@ function onActivate({ hit }: { hit: StaffHit }): void {
   }
 
   if (store.state.eraserMode === 'element') {
-    store.erase(realAddress(hit));
+    eraseAt(hit);
 
     return;
   }
@@ -249,7 +261,7 @@ useHotkeys(
       if (!hit) return;
 
       event.preventDefault();
-      store.erase(realAddress(hit));
+      eraseAt(hit);
     },
     Delete(event) {
       const hit = hover.value?.hit;
@@ -257,7 +269,7 @@ useHotkeys(
       if (!hit) return;
 
       event.preventDefault();
-      store.erase(realAddress(hit));
+      eraseAt(hit);
     },
     ArrowUp(event) {
       const hit = hover.value?.hit;
@@ -279,6 +291,14 @@ useHotkeys(
     // both map to the same handler rather than relying on one key casing
     z: undoRedo,
     Z: undoRedo,
+    a(event) {
+      event.preventDefault();
+      store.addMeasure();
+    },
+    s(event) {
+      event.preventDefault();
+      store.removeLastMeasure();
+    },
   },
   computed(() => props.interactive),
 );

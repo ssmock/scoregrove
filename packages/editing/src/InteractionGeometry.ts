@@ -150,9 +150,15 @@ export const InteractionGeometry = {
     if (!laidOutMeasure) return undefined;
 
     const staffRelativeY = y - (system.staffYs[staffIndex] ?? 0);
+    // `x` is system-relative, but each element's own `x` is relative to its
+    // measure's origin (measures render translated by `entry.x`) — comparing
+    // them directly biases every non-first measure toward whichever element
+    // has the largest measure-relative x, since the (uncorrected) distance
+    // shrinks monotonically with it.
+    const measureRelativeX = x - entry.x;
     const elementIndex = InteractionGeometry.nearestElementIndex(
       laidOutMeasure.elements,
-      x,
+      measureRelativeX,
       staffRelativeY,
     );
 

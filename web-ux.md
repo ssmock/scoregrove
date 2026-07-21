@@ -79,7 +79,7 @@ shell, then the feature steps of TODO-UX.md.
 - [x] `tokens.css` — color, spacing, type, radii, shadows, z-layers, motion (light + dark via
       `prefers-color-scheme`; no manual toggle in v1)
 - [x] useDismissable / useFocusTrap / useHotkeys composables
-- [x] AppButton (default / quiet / danger; icon slot; `pressed` toggle state)
+- [x] AppButton (default / quiet / danger / link; icon slot; `pressed` toggle state)
 - [x] AppDialog (teleported, focus-trapped, Esc/overlay dismiss, title + footer slots)
 - [x] ConfirmDialog (message + confirm/cancel over AppDialog)
 - [x] AppFlyout (anchored to trigger or pointer position; dismissable; clamped to viewport)
@@ -101,16 +101,24 @@ shell, then the feature steps of TODO-UX.md.
       fine remainders next to dotted/double-dotted short notes, not a bug.
 - [x] `emptyMeasure` / `emptyStaffContent` builders (whole-rest-backed)
 - [x] `placeElement` (`Placement.place`) — consume rest time at an onset, splitting
-      remainders; spans multiple consecutive rests when one isn't enough. Pending: append
-      measures when placing past the end (rejected for now, not silently clipped)
+      remainders; spans multiple consecutive rests when one isn't enough. A note landing on a
+      same-duration note or chord already at that onset forms/extends a chord instead of
+      failing (`formChord`) — clicking twice on one beat is how a chord gets built. Pending:
+      append measures when placing past the end (rejected for now, not silently clipped)
 - [x] `eraseElement` (`Placement.erase`) — restore rest time, merge adjacent rests on both
-      sides, remove a dynamic outright. Refuses to erase a chord or a tied/slurred note rather
-      than attempting repair, since ties/slurs aren't user-editable in v1 and a wrong repair
-      would silently corrupt the score
+      sides, remove a dynamic outright. A chord needs a `targetPitch` (the same derivation
+      `place` uses) to know which tone to remove — collapses to a plain `Note` once one tone is
+      left; without a `targetPitch` a chord is still refused outright. Refuses a tied/slurred
+      note (or a chord tone/chord carrying one) rather than attempting repair, since ties/slurs
+      aren't user-editable in v1 and a wrong repair would silently corrupt the score
 - [x] `eraseBar` (`Placement.eraseBar`) — resolved as leaned: resets every staff/voice in the
       measure to whole rests rather than shortening the piece; preserves the measure's own
-      key/time/barline/navigation fields (only content resets); same chord/tie/slur refusal as
-      `erase`, checked across every staff and voice in the bar
+      key/time/barline/navigation fields and any genuine clef change (only content resets) —
+      leaves a staff's clef unset if the measure didn't already carry a change there, rather
+      than fabricating one from the staff's starting clef, same fix and reasoning as
+      `MeasureOps.addMeasure`. An ordinary chord resets along with everything else — it doesn't
+      reach outside its own measure — but a tied/slurred note or chord still refuses the whole
+      reset, checked across every staff and voice in the bar, same as `erase`
 - [x] Pitch stepping (`PitchStepping.step`) — chromatic number ↔ written pitch, key-aware
       spelling (key-implied spelling first, e.g. G major steps to F♯ never G♭; then the plain
       natural letter, explicit-Natural only when the key alters it; sharps ascending / flats
@@ -177,13 +185,25 @@ shell, then the feature steps of TODO-UX.md.
 - [x] Interactive staff — hover highlight/ghost preview and click to place/erase, both flow
       modes, both wired through `ScoreDisplay`'s new `interactive` prop
 - [x] Hotkeys — `p` (eyedropper-to-recents-top + select), `-`/`=` duration, arrows key-aware
-      semitones, Backspace/Delete remove; Ctrl+Z / Ctrl+Shift+Z undo/redo
+      semitones, Backspace/Delete remove; Ctrl+Z / Ctrl+Shift+Z undo/redo; `a`/`s` add/remove the
+      last measure
+- [x] Measure count — `MeasureOps.addMeasure` (always safe, continues the piece's effective time
+      signature; leaves clef unset, since an explicit clef means "a change happens here" and
+      `ContextWalk` already carries the previous effective clef forward on its own) /
+      `MeasureOps.removeLastMeasure` (refuses below one measure, or a tied/slurred last
+      measure); pallet buttons plus the `a`/`s` hotkeys above
+- [x] Keyboard shortcuts reference — a subtle `AppButton` `link` variant opens a static
+      `HotkeysDialog` listing every hotkey; not generated from the hotkey map, so it needs
+      updating by hand if that map changes
 
 ## Major assumptions
 
 - Mouse + keyboard only to start — no touch, no responsive sidebar collapse.
-- Single-voice editing (voice 1). Chords, multi-voice input, ties, slurs, dynamics, lyrics
-  render if present in a loaded score but are not editable yet.
+- Single-voice editing (voice 1). Chords are placeable and single tones erasable (clicking a
+  second note onto an occupied beat of the same duration forms/extends one); dot cycle,
+  articulation toggle, transposition, and the right-click flyout still only work on a plain
+  `Note`, not a chord tone. Multi-voice input, ties, slurs, dynamics, lyrics render if present in
+  a loaded score but are not editable yet.
 - The pallet never represents pitches; pitch comes from the click's staff position, spelling
   from the tool's accidental or the arrow-stepping policy.
 - Recents are tool configurations (kind + duration + dots + articulations + accidental);
