@@ -138,6 +138,49 @@ describe('InteractionGeometry.locate', () => {
     expect(hit?.onset).toEqual(Fraction.of(3, 8));
   });
 
+  it('flags a click on the time signature preamble of a measure that owns one', () => {
+    const timeSigGlyph = firstMeasure.signatures.find((g) => g.glyph === 'timeSig4');
+
+    const hit = InteractionGeometry.locate({
+      system,
+      measures: melody.measures,
+      x: timeSigGlyph!.x,
+      y: 2,
+    });
+
+    expect(hit?.measureIndex).toBe(0);
+    expect(hit?.timeSignature).toBe(true);
+  });
+
+  it('does not flag a click on an ordinary note, even left of nothing in particular', () => {
+    const note = firstMeasure.elements[1];
+
+    const hit = InteractionGeometry.locate({
+      system,
+      measures: melody.measures,
+      x: note.x,
+      y: 2,
+    });
+
+    expect(hit?.timeSignature).toBeUndefined();
+  });
+
+  it('does not flag a click in a measure that does not own a time signature', () => {
+    // the second measure never prints its own time signature — it just
+    // continues the first measure's — so there's nothing there to click
+    const secondEntry = system.measures[1];
+
+    const hit = InteractionGeometry.locate({
+      system,
+      measures: melody.measures,
+      x: secondEntry.x + 0.1,
+      y: 2,
+    });
+
+    expect(hit?.measureIndex).toBe(1);
+    expect(hit?.timeSignature).toBeUndefined();
+  });
+
   it('returns undefined for a system with no measures', () => {
     const hit = InteractionGeometry.locate({
       system: { ...system, measures: [] },

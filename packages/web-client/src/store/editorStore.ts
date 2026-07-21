@@ -16,6 +16,7 @@ import { MeasureOps } from '@scoregrove/editing/MeasureOps';
 import { Placement, type ElementSpec, type PlacementAddress } from '@scoregrove/editing/Placement';
 import { RestBacking } from '@scoregrove/editing/RestBacking';
 import { StaffOps } from '@scoregrove/editing/StaffOps';
+import { TimeSignatureOps } from '@scoregrove/editing/TimeSignatureOps';
 import { UndoStack } from '@scoregrove/editing/UndoStack';
 import type { ScoreAddress } from '@scoregrove/engraving/LayoutTree';
 import { Projects } from './Projects';
@@ -23,13 +24,13 @@ import { Projects } from './Projects';
 /**
  * A pallet tool configuration — what the next placement (or a "p" eyedropper
  * pickup) will place. Pitch is never part of it: pitch comes from where the
- * user clicks, not from the pallet.
+ * user clicks, not from the pallet. A time signature is measure-wide rather
+ * than a voice element, so it carries a `TimeSignature` instead of a
+ * duration and has no articulations to speak of.
  */
-export type ToolConfig = {
-  kind: 'note' | 'rest';
-  duration: Duration;
-  articulations?: readonly Articulation[];
-};
+export type ToolConfig =
+  | { kind: 'note' | 'rest'; duration: Duration; articulations?: readonly Articulation[] }
+  | { kind: 'timeSignature'; time: TimeSignature };
 
 export type View = 'editor' | 'performance';
 export type Flow = 'vertical' | 'horizontal';
@@ -49,10 +50,21 @@ const sameArticulations = (
   return left.length === right.length && left.every((articulation) => right.includes(articulation));
 };
 
-export const sameToolConfig = (a: ToolConfig, b: ToolConfig): boolean =>
-  a.kind === b.kind &&
-  Duration.equals(a.duration, b.duration) &&
-  sameArticulations(a.articulations, b.articulations);
+export const sameToolConfig = (a: ToolConfig, b: ToolConfig): boolean => {
+  if (a.kind === 'timeSignature' || b.kind === 'timeSignature') {
+    return (
+      a.kind === 'timeSignature' &&
+      b.kind === 'timeSignature' &&
+      TimeSignature.equals(a.time, b.time)
+    );
+  }
+
+  return (
+    a.kind === b.kind &&
+    Duration.equals(a.duration, b.duration) &&
+    sameArticulations(a.articulations, b.articulations)
+  );
+};
 
 /** Moves a matching entry to the front instead of duplicating it, capped */
 const promote = (recents: readonly ToolConfig[], config: ToolConfig): ToolConfig[] =>
@@ -262,6 +274,16 @@ export function createEditorStore(initial: Score = blankScore()) {
       return commitResult(MeasureOps.removeLastMeasure(state.score));
     },
 
+    /** The time signature tool's click: sets a measure's own time signature, refusing unless it's empty */
+    placeTimeSignature(measureIndex: number, time: TimeSignature): Result<Score> {
+      return commitResult(TimeSignatureOps.setTimeSignature(state.score, measureIndex, time));
+    },
+
+    /** The element eraser clicking a time signature: reverts to whatever's effective before it */
+    eraseTimeSignature(measureIndex: number): Result<Score> {
+      return commitResult(TimeSignatureOps.clearTimeSignature(state.score, measureIndex));
+    },
+
     toggleStaffVisibility(index: number): void {
       const next = new Set(state.hiddenStaves);
 
@@ -354,7 +376,7 @@ export function createEditorStore(initial: Score = blankScore()) {
 
     /** The "-"/"=" hotkeys: steps the active tool's duration, promoting like any other pick */
     cycleActiveDuration(direction: 'shorter' | 'longer'): void {
-      if (!state.activeTool) return;
+      if (!state.activeTool || state.activeTool.kind === 'timeSignature') return;
 
       const duration =
         direction === 'shorter'

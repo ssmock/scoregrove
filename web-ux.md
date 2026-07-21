@@ -208,6 +208,25 @@ shell, then the feature steps of TODO-UX.md.
       `closeTie` promotes that to `Both` rather than refusing, so clicking that same note again to
       start the next link works. Chords aren't supported (tie creation/removal only targets a
       plain `Note`, matching every other chord-adjacent limitation above)
+- [x] Time signature — a pallet tool defaulting to common time on click, with its own flyout to
+      key in beats/unit (`TimeSignature.create`, validated); reopening the flyout on an active
+      time signature tool pre-fills its current beats/unit. Recents track it like any other
+      `ToolConfig` (`sameToolConfig` compares by value via `TimeSignature.equals`). Placing sets
+      `measure.time` and rebuilds that measure's rest-backed content to the new capacity
+      (`TimeSignatureOps.setTimeSignature`); erasing reverts to whatever's effective just before
+      it (`clearTimeSignature`) — except the very first measure, which has no earlier measure to
+      fall back to and always shows a time signature regardless of whether it restates one of its
+      own (`ContextWalk` prints one there either way, from `score.time` otherwise), so erasing it
+      instead resets the piece's own starting signature to common time. Both refuse outright on a
+      measure that isn't fully rest-backed — resizing written music around a new meter isn't
+      attempted. A time signature is measure-wide,
+      not a voice element, so it needed its own hit-test: `InteractionGeometry.locate` flags
+      `timeSignature: true` when a click lands left of a measure's first element _and_ that
+      measure prints one, identified by glyph name (`timeSig0`-`timeSig9`/`timeSigCommon`/
+      `timeSigCutCommon`) since the layout tree's `signatures` array doesn't otherwise distinguish
+      clef/key/time. Only the element eraser acts on it — `eraseBar` already preserved
+      `measure.time` (spreads the measure before only overriding `contents`), so no change was
+      needed there to keep the bar eraser from touching it
 
 ## Major assumptions
 

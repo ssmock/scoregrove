@@ -1,10 +1,14 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue';
 import { Duration, NoteValue } from '@scoregrove/domain/Duration';
+import { Result } from '@scoregrove/domain/Result';
+import { BeatUnit, TimeSignature } from '@scoregrove/domain/TimeSignature';
 import type { GlyphName } from '@scoregrove/engraving/Bravura';
 import { Glyphs } from '@scoregrove/engraving/Glyphs';
 import AppButton from '../ui/AppButton.vue';
 import AppFlyout from '../ui/AppFlyout.vue';
+import AppSelect from '../ui/AppSelect.vue';
+import AppTextField from '../ui/AppTextField.vue';
 import MusicIcon from '../ui/MusicIcon.vue';
 import SidebarSection from '../ui/SidebarSection.vue';
 import { sameToolConfig, type EraserMode, type ToolConfig } from '../store/editorStore';
@@ -14,9 +18,12 @@ import StaffDialog from './StaffDialog.vue';
 
 /**
  * Note/rest pick, then a duration flyout, then the config is active (and
- * promoted into recents) — the two-step interaction TODO-UX describes.
- * Recents and the eraser modes live here too, since they're all "what will
- * placing/clicking do next" state.
+ * promoted into recents) — the two-step interaction TODO-UX describes. The
+ * time signature tool is single-click instead: picking it immediately
+ * selects common time as a sensible default, and its own flyout opens
+ * alongside for keying in a different beats/unit. Recents and the eraser
+ * modes live here too, since they're all "what will placing/clicking do
+ * next" state.
  */
 const store = useEditorStore();
 
@@ -30,11 +37,25 @@ const noteValues: readonly NoteValue[] = [
   NoteValue.SixtyFourth,
 ];
 
+const beatUnitOptions = [
+  { value: BeatUnit.Whole, label: 'Whole (1)' },
+  { value: BeatUnit.Half, label: 'Half (2)' },
+  { value: BeatUnit.Quarter, label: 'Quarter (4)' },
+  { value: BeatUnit.Eighth, label: 'Eighth (8)' },
+  { value: BeatUnit.Sixteenth, label: 'Sixteenth (16)' },
+  { value: BeatUnit.ThirtySecond, label: 'Thirty-second (32)' },
+];
+
 const flyoutKind = ref<'note' | 'rest' | null>(null);
 const staffDialogOpen = ref(false);
 const hotkeysDialogOpen = ref(false);
+const timeSigFlyoutOpen = ref(false);
+const draftBeats = ref('4');
+const draftUnit = ref<BeatUnit>(BeatUnit.Quarter);
+const timeSigError = ref<string | undefined>(undefined);
 const noteButton = ref<InstanceType<typeof AppButton> | null>(null);
 const restButton = ref<InstanceType<typeof AppButton> | null>(null);
+const timeSigButton = ref<InstanceType<typeof AppButton> | null>(null);
 
 const flyoutAnchor = computed(() => {
   if (flyoutKind.value === 'note') return noteButton.value?.rootEl ?? null;
@@ -68,6 +89,50 @@ function pickDuration(noteValue: NoteValue): void {
 function pickEraser(mode: EraserMode): void {
   store.setEraserMode(store.state.eraserMode === mode ? null : mode);
 }
+
+/**
+ * Picks up the tool button's own click: closes the flyout if it's already
+ * open, otherwise opens it, pre-filled from the current active tool if it's
+ * already a time signature, or common time (the default) if not — selecting
+ * common time immediately, exactly like clicking Tie or an eraser button
+ * takes effect right away rather than waiting on a flyout choice.
+ */
+function toggleTimeSigFlyout(): void {
+  if (timeSigFlyoutOpen.value) {
+    timeSigFlyoutOpen.value = false;
+
+    return;
+  }
+
+  const current = store.state.activeTool;
+
+  if (current?.kind === 'timeSignature') {
+    draftBeats.value = String(current.time.beats);
+    draftUnit.value = current.time.beatUnit;
+  } else {
+    draftBeats.value = '4';
+    draftUnit.value = BeatUnit.Quarter;
+    store.selectTool({ kind: 'timeSignature', time: TimeSignature.commonTime() });
+  }
+
+  timeSigError.value = undefined;
+  timeSigFlyoutOpen.value = true;
+}
+
+function applyTimeSignature(): void {
+  const beats = Number(draftBeats.value);
+  const result = TimeSignature.create(beats, draftUnit.value);
+
+  if (!Result.isOk(result)) {
+    timeSigError.value = result.error.messages.join('; ');
+
+    return;
+  }
+
+  timeSigError.value = undefined;
+  store.selectTool({ kind: 'timeSignature', time: result.value });
+  timeSigFlyoutOpen.value = false;
+}
 </script>
 
 <template>
@@ -96,6 +161,15 @@ function pickEraser(mode: EraserMode): void {
       <AppButton :pressed="store.state.tieMode" @click="store.setTieMode(!store.state.tieMode)">
         Tie
       </AppButton>
+      <AppButton
+        ref="timeSigButton"
+        :pressed="store.state.activeTool?.kind === 'timeSignature'"
+        aria-haspopup="true"
+        :aria-expanded="timeSigFlyoutOpen"
+        @click="toggleTimeSigFlyout"
+      >
+        Time Sig
+      </AppButton>
     </div>
 
     <AppFlyout :open="flyoutKind !== null" :anchor="flyoutAnchor" @close="flyoutKind = null">
@@ -113,8 +187,36 @@ function pickEraser(mode: EraserMode): void {
       </div>
     </AppFlyout>
 
+    <AppFlyout
+      :open="timeSigFlyoutOpen"
+      :anchor="timeSigButton?.rootEl ?? null"
+      @close="timeSigFlyoutOpen = false"
+    >
+      <div class="pallet__time-sig-form">
+        <AppTextField
+          label="Beats"
+          :model-value="draftBeats"
+          :error="timeSigError"
+          @update:model-value="(value) => (draftBeats = value)"
+        />
+        <AppSelect
+          label="Beat unit"
+          :model-value="draftUnit"
+          :options="beatUnitOptions"
+          @update:model-value="(value) => (draftUnit = value as BeatUnit)"
+        />
+        <AppButton @click="applyTimeSignature">Use This Time Signature</AppButton>
+      </div>
+    </AppFlyout>
+
     <div v-if="store.state.activeTool" class="pallet__active">
+      <template v-if="store.state.activeTool.kind === 'timeSignature'">
+        <span class="pallet__time-sig-badge">{{
+          TimeSignature.format(store.state.activeTool.time)
+        }}</span>
+      </template>
       <MusicIcon
+        v-else
         :glyph="glyphFor(store.state.activeTool.kind, store.state.activeTool.duration.noteValue)"
         :size="18"
       />
@@ -136,10 +238,17 @@ function pickEraser(mode: EraserMode): void {
           'pallet__recent--active':
             !!store.state.activeTool && sameToolConfig(recent, store.state.activeTool),
         }"
-        :title="`${recent.kind} · ${recent.duration.noteValue}`"
+        :title="
+          recent.kind === 'timeSignature'
+            ? TimeSignature.format(recent.time)
+            : `${recent.kind} · ${recent.duration.noteValue}`
+        "
         @click="store.selectTool(recent)"
       >
-        <MusicIcon :glyph="glyphFor(recent.kind, recent.duration.noteValue)" :size="16" />
+        <span v-if="recent.kind === 'timeSignature'" class="pallet__time-sig-badge">{{
+          TimeSignature.format(recent.time)
+        }}</span>
+        <MusicIcon v-else :glyph="glyphFor(recent.kind, recent.duration.noteValue)" :size="16" />
       </button>
     </div>
 
@@ -243,5 +352,17 @@ function pickEraser(mode: EraserMode): void {
 
 .pallet__hotkeys-link {
   align-self: flex-start;
+}
+
+.pallet__time-sig-form {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  min-width: 12rem;
+}
+
+.pallet__time-sig-badge {
+  font-size: var(--text-sm);
+  font-weight: 600;
 }
 </style>

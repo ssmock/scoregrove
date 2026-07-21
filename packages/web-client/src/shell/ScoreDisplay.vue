@@ -163,6 +163,12 @@ function place(hit: StaffHit): void {
 
   if (!tool) return;
 
+  if (tool.kind === 'timeSignature') {
+    store.placeTimeSignature(hit.measureIndex, tool.time);
+
+    return;
+  }
+
   const address = {
     measure: hit.measureIndex,
     staff: projection.value.staffMap[hit.staffIndex],
@@ -212,7 +218,8 @@ function onActivate({ hit }: { hit: StaffHit }): void {
   }
 
   if (store.state.eraserMode === 'element') {
-    eraseAt(hit);
+    if (hit.timeSignature) store.eraseTimeSignature(hit.measureIndex);
+    else eraseAt(hit);
 
     return;
   }
@@ -257,7 +264,9 @@ const ghostGlyph = computed(() => {
 
   const tool = store.state.activeTool;
 
-  if (!tool) return null;
+  // A time signature is measure-wide, not a staff position — no notehead
+  // ghost makes sense for it the way it does for a note/rest
+  if (!tool || tool.kind === 'timeSignature') return null;
 
   return tool.kind === 'note'
     ? Glyphs.forNotehead(tool.duration.noteValue)

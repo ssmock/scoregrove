@@ -1,8 +1,9 @@
+import type { GlyphName } from '@scoregrove/engraving/Bravura';
 import { Duration } from '@scoregrove/domain/Duration';
 import { Fraction } from '@scoregrove/domain/Fraction';
 import type { Measure } from '@scoregrove/domain/Measure';
 import type { MeasureElement } from '@scoregrove/domain/MeasureElement';
-import type { LaidOutElement, LaidOutSystem } from '@scoregrove/engraving/LayoutTree';
+import type { LaidOutElement, LaidOutGlyph, LaidOutSystem } from '@scoregrove/engraving/LayoutTree';
 import { StaffPosition } from '@scoregrove/engraving/StaffPosition';
 
 export type StaffHit = {
@@ -13,7 +14,36 @@ export type StaffHit = {
   onset: Fraction;
   /** Nearest staff position, for the pitch a click at this point implies */
   position: StaffPosition;
+  /**
+   * True when the click landed left of the measure's first element, in the
+   * clef/key/time preamble, *and* this measure prints a time signature of
+   * its own there. A caller that cares about time signatures (the element
+   * eraser) should check this before falling back to `elementIndex`/`onset`,
+   * which still point at the nearest ordinary element regardless, since a
+   * click can only ever mean one or the other, never both.
+   */
+  timeSignature?: boolean;
 };
+
+/** Every glyph name `Signatures.time` can produce — the numeral pairs and the two symbolic glyphs */
+const timeSignatureGlyphNames: ReadonlySet<GlyphName> = new Set<GlyphName>([
+  'timeSig0',
+  'timeSig1',
+  'timeSig2',
+  'timeSig3',
+  'timeSig4',
+  'timeSig5',
+  'timeSig6',
+  'timeSig7',
+  'timeSig8',
+  'timeSig9',
+  'timeSigCommon',
+  'timeSigCutCommon',
+]);
+
+/** Whether a laid-out measure's preamble includes (and so, this measure owns) a time signature */
+const hasTimeSignature = (signatures: readonly LaidOutGlyph[]): boolean =>
+  signatures.some((glyph) => timeSignatureGlyphNames.has(glyph.glyph));
 
 /** Each element kind's own vertical anchor, in the same staff-space y the layout tree uses */
 const elementY = (element: LaidOutElement): number => {
@@ -168,12 +198,17 @@ export const InteractionGeometry = {
 
     if (!voiceElements) return undefined;
 
+    const firstElementX = laidOutMeasure.elements[0]?.x ?? Infinity;
+    const timeSignature =
+      measureRelativeX < firstElementX && hasTimeSignature(laidOutMeasure.signatures);
+
     return {
       measureIndex: entry.index,
       staffIndex,
       elementIndex,
       onset: InteractionGeometry.onsetOf(voiceElements, elementIndex),
       position: InteractionGeometry.nearestPosition(staffRelativeY),
+      ...(timeSignature ? { timeSignature } : {}),
     };
   },
 };

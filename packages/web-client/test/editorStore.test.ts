@@ -8,10 +8,11 @@ import { Articulation } from '@scoregrove/domain/Notations';
 import { NonEmptyArray } from '@scoregrove/domain/NonEmptyArray';
 import { NonEmptyString } from '@scoregrove/domain/NonEmptyString';
 import { Octave, Pitch, PitchClass, PitchLetter } from '@scoregrove/domain/Pitch';
+import { PositiveInteger } from '@scoregrove/domain/PositiveInteger';
 import { Result } from '@scoregrove/domain/Result';
 import type { Score } from '@scoregrove/domain/Score';
 import { Staff } from '@scoregrove/domain/Staff';
-import { TimeSignature } from '@scoregrove/domain/TimeSignature';
+import { BeatUnit, TimeSignature } from '@scoregrove/domain/TimeSignature';
 import { RestBacking } from '@scoregrove/editing/RestBacking';
 import type { ScoreAddress } from '@scoregrove/engraving/LayoutTree';
 import { autosaveDelayMs, createEditorStore, type ToolConfig } from '../src/store/editorStore';
@@ -25,6 +26,10 @@ const quarterNote: ToolConfig = {
   kind: 'note',
   duration: Duration.of(NoteValue.Quarter),
 };
+
+/** Narrows a ToolConfig (which may be the durationless timeSignature kind) down to its duration */
+const durationOf = (tool: ToolConfig | null | undefined): Duration | undefined =>
+  tool && tool.kind !== 'timeSignature' ? tool.duration : undefined;
 
 /** A minimal, valid score independent of the store, for seeding localStorage directly */
 const sampleScore = (): Score => {
@@ -486,6 +491,106 @@ describe('createEditorStore measure operations', () => {
   });
 });
 
+describe('createEditorStore time signature', () => {
+  const threeFour = { beats: PositiveInteger.of(3), beatUnit: BeatUnit.Quarter };
+
+  it('sets a time signature on the (empty) blank measure', () => {
+    const store = createEditorStore();
+
+    const result = store.placeTimeSignature(0, threeFour);
+
+    expect(Result.isOk(result)).toBe(true);
+    expect(store.state.score.measures[0].time).toEqual(threeFour);
+
+    store.dispose();
+  });
+
+  it('refuses to set a time signature once the measure has notes', () => {
+    const store = createEditorStore();
+
+    store.place(
+      { measure: 0, staff: 0, voice: 0, onset: Fraction.zero() },
+      { kind: 'note', pitch: g4, duration: Duration.of(NoteValue.Quarter) },
+    );
+    const result = store.placeTimeSignature(0, threeFour);
+
+    expect(Result.isError(result)).toBe(true);
+
+    store.dispose();
+  });
+
+  it('erases a time signature back to whatever was effective before it', () => {
+    const store = createEditorStore();
+
+    store.placeTimeSignature(0, threeFour);
+    const result = store.eraseTimeSignature(0);
+
+    expect(Result.isOk(result)).toBe(true);
+    expect(store.state.score.measures[0].time).toBeUndefined();
+
+    store.dispose();
+  });
+
+  it('erasing the starting time signature resets it to common time, even with no change of its own', () => {
+    const store = createEditorStore();
+
+    const result = store.eraseTimeSignature(0);
+
+    expect(Result.isOk(result)).toBe(true);
+    expect(store.state.score.time).toEqual(TimeSignature.commonTime());
+
+    store.dispose();
+  });
+
+  it('refuses to erase a time signature from a later measure that has none of its own', () => {
+    const store = createEditorStore();
+
+    store.addMeasure();
+    const result = store.eraseTimeSignature(1);
+
+    expect(Result.isError(result)).toBe(true);
+
+    store.dispose();
+  });
+
+  it('selecting a time signature tool promotes it to recents', () => {
+    const store = createEditorStore();
+
+    store.selectTool({ kind: 'timeSignature', time: threeFour });
+
+    expect(store.state.activeTool).toEqual({ kind: 'timeSignature', time: threeFour });
+    expect(store.state.recents).toEqual([{ kind: 'timeSignature', time: threeFour }]);
+
+    store.dispose();
+  });
+
+  it('treats different time signatures as different configurations', () => {
+    const store = createEditorStore();
+    const fourFour = TimeSignature.commonTime();
+
+    store.selectTool({ kind: 'timeSignature', time: threeFour });
+    store.selectTool({ kind: 'timeSignature', time: fourFour });
+
+    expect(store.state.recents).toEqual([
+      { kind: 'timeSignature', time: fourFour },
+      { kind: 'timeSignature', time: threeFour },
+    ]);
+
+    store.dispose();
+  });
+
+  it('cycleActiveDuration does nothing when the active tool is a time signature', () => {
+    const store = createEditorStore();
+
+    store.selectTool({ kind: 'timeSignature', time: threeFour });
+    store.cycleActiveDuration('shorter');
+
+    expect(store.state.activeTool).toEqual({ kind: 'timeSignature', time: threeFour });
+
+    store.dispose();
+  });
+});
+
 describe('createEditorStore presentation prefs', () => {
   it('changes view and flow without touching undo history', () => {
     const store = createEditorStore();
@@ -567,12 +672,12 @@ describe('createEditorStore tool selection and recents', () => {
     store.selectTool(quarterNote);
     store.cycleActiveDuration('shorter');
 
-    expect(store.state.activeTool?.duration.noteValue).toBe(NoteValue.Eighth);
-    expect(store.state.recents[0]?.duration.noteValue).toBe(NoteValue.Eighth);
+    expect(durationOf(store.state.activeTool)?.noteValue).toBe(NoteValue.Eighth);
+    expect(durationOf(store.state.recents[0])?.noteValue).toBe(NoteValue.Eighth);
 
     store.cycleActiveDuration('longer');
 
-    expect(store.state.activeTool?.duration.noteValue).toBe(NoteValue.Quarter);
+    expect(durationOf(store.state.activeTool)?.noteValue).toBe(NoteValue.Quarter);
 
     store.dispose();
   });
@@ -619,7 +724,7 @@ describe('createEditorStore tool selection and recents', () => {
     const store = createEditorStore();
 
     // 16 distinct configs: every note value as both a note and a rest
-    const kinds: ToolConfig['kind'][] = ['note', 'rest'];
+    const kinds: ('note' | 'rest')[] = ['note', 'rest'];
 
     kinds.forEach((kind) => {
       NoteValue.values.forEach((noteValue) =>
