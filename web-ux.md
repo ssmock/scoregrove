@@ -117,8 +117,12 @@ shell, then the feature steps of TODO-UX.md.
       leaves a staff's clef unset if the measure didn't already carry a change there, rather
       than fabricating one from the staff's starting clef, same fix and reasoning as
       `MeasureOps.addMeasure`. An ordinary chord resets along with everything else — it doesn't
-      reach outside its own measure — but a tied/slurred note or chord still refuses the whole
-      reset, checked across every staff and voice in the bar, same as `erase`
+      reach outside its own measure. A tied note or chord tone doesn't block the reset either
+      (fixed a bug where it did): any tie reaching into an adjacent measure — starting there,
+      closing there, or both, for a `Both`-role note in the middle of a chain — is cleaned up
+      first via `removeTie`, downgrading whichever neighbor it's tied to, the same as erasing
+      that one note/tone directly would. Only a slurred note or chord still refuses the whole
+      reset, checked across every staff and voice in the bar
 - [x] Pitch stepping (`PitchStepping.step`) — chromatic number ↔ written pitch, key-aware
       spelling (key-implied spelling first, e.g. G major steps to F♯ never G♭; then the plain
       natural letter, explicit-Natural only when the key alters it; sharps ascending / flats
@@ -180,8 +184,13 @@ shell, then the feature steps of TODO-UX.md.
 
 - [x] Pallet — note/rest tools, duration flyout, element + bar erasers, prominent staff button
 - [x] Recents strip (MusicIcon compositions of duration + dots + articulation + accidental)
-- [x] Right-click pallet flyout — dots and articulations on an existing placed note, plus
-      removal; accidental override is not wired up yet (see TO-VERIFY.md — a guess, not a bug)
+- [x] Right-click pallet flyout — dots and articulations on an existing placed note or chord,
+      plus tie start/remove and removal; accidental override is not wired up yet (see
+      TO-VERIFY.md — a guess, not a bug). Dots/articulations are always chord-wide fields
+      (`Placement.cycleDots`/`toggleArticulation` now dispatch on note-or-chord via a shared
+      `editSoundedElement`, generalized from the old note-only `editNote`), so they act on the
+      whole chord at once. Tie and removal are per-tone for a chord: the click's derived pitch
+      (the same mechanism the eraser already uses) picks out which tone
 - [x] Interactive staff — hover highlight/ghost preview and click to place/erase, both flow
       modes, both wired through `ScoreDisplay`'s new `interactive` prop
 - [x] Hotkeys — `p` (eyedropper-to-recents-top + select), `-`/`=` duration, arrows key-aware
@@ -195,19 +204,24 @@ shell, then the feature steps of TODO-UX.md.
 - [x] Keyboard shortcuts reference — a subtle `AppButton` `link` variant opens a static
       `HotkeysDialog` listing every hotkey; not generated from the hotkey map, so it needs
       updating by hand if that map changes
-- [x] Ties — a pallet tool (click a note to start, click the next same-pitch note to close) and
-      a right-click flyout "Start Tie"/"Remove Tie". `Placement.closeTie`/`removeTie` are the
-      only adjacency a tie ever has: the next sounded (non-dynamic) element after the start note,
-      matching pitch, which may cross a measure boundary — the same rule `Score.check` and the
-      renderer already resolve ties through, so a closed tie always passes both. `erase` now
-      cleans up a tied note's partner automatically instead of refusing it (slurs still refuse).
-      Store-level `tieMode`/`pendingTie` are mutually exclusive with `activeTool`/`eraserMode`,
-      same pattern as the eraser; changing tool/eraser mode cancels a pending tie, a failed close
-      attempt leaves it pending for another try. Chains across three or more measures build one
-      link at a time — closing a tie into a note may leave it with an `End` role already, and
-      `closeTie` promotes that to `Both` rather than refusing, so clicking that same note again to
-      start the next link works. Chords aren't supported (tie creation/removal only targets a
-      plain `Note`, matching every other chord-adjacent limitation above)
+- [x] Ties — a pallet tool (click a note or chord tone to start, click the next same-pitch
+      note/chord tone to close) and a right-click flyout "Start Tie"/"Remove Tie".
+      `Placement.closeTie`/`removeTie` are the only adjacency a tie ever has: the next sounded
+      (non-dynamic) element after the start note, matching pitch, which may cross a measure
+      boundary — the same rule `Score.check` and the renderer already resolve ties through, so a
+      closed tie always passes both. `erase` now cleans up a tied note's partner automatically
+      instead of refusing it (slurs still refuse). Store-level `tieMode`/`pendingTie` are
+      mutually exclusive with `activeTool`/`eraserMode`, same pattern as the eraser; changing
+      tool/eraser mode cancels a pending tie, a failed close attempt leaves it pending for
+      another try. Chains across three or more measures build one link at a time — closing a tie
+      into a note may leave it with an `End` role already, and `closeTie` promotes that to `Both`
+      rather than refusing, so clicking that same note again to start the next link works.
+      Chords tie per-tone, on either or both ends: `closeTie`/`removeTie` take an optional
+      `pitch` (required when the note/chord side is a chord, since there's no single pitch to
+      default to) that picks out which tone participates, via shared `hasPitch`/`tieRoleAt`/
+      `withTieRoleAt` helpers that treat a plain note and a chord tone the same way. Erasing a
+      tied chord tone cleans up just that tone's tie (via the same `removeTie` path), leaving
+      other tones and their ties untouched
 - [x] Time signature — a pallet tool defaulting to common time on click, with its own flyout to
       key in beats/unit (`TimeSignature.create`, validated); reopening the flyout on an active
       time signature tool pre-fills its current beats/unit. Recents track it like any other
@@ -232,11 +246,13 @@ shell, then the feature steps of TODO-UX.md.
 
 - Mouse + keyboard only to start — no touch, no responsive sidebar collapse.
 - Single-voice editing (voice 1). Chords are placeable and single tones erasable (clicking a
-  second note onto an occupied beat of the same duration forms/extends one); dot cycle,
-  articulation toggle, transposition, tying, and the right-click flyout still only work on a
-  plain `Note`, not a chord tone. Ties between two plain notes are addable/removable (pallet tool
-  or right-click flyout). Multi-voice input, slurs, dynamics, lyrics render if present in a
-  loaded score but are not editable yet.
+  second note onto an occupied beat of the same duration forms/extends one). Dot cycle and
+  articulation toggle apply chord-wide (they're shared fields, not per-tone). Tying works on a
+  plain note or one tone of a chord, in any combination, via an optional pitch that picks out
+  the tone. Transposition and adding a tone to an already-tied note/chord still only work on a
+  plain `Note` (chord transpose, and merging a new tone into a tied chord, remain unbuilt).
+  Multi-voice input, slurs, dynamics, lyrics render if present in a loaded score but are not
+  editable yet.
 - The pallet never represents pitches; pitch comes from the click's staff position, spelling
   from the tool's accidental or the arrow-stepping policy.
 - Recents are tool configurations (kind + duration + dots + articulations + accidental);

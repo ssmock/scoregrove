@@ -323,13 +323,57 @@ const formChord = (
 };
 
 /**
+ * Whether `element` sounds at `pitch` at all — a note matching exactly, or a
+ * chord with a matching tone. The shared test `closeTie`/`removeTie` use to
+ * check a pitch actually belongs to the note or chord tone being addressed.
+ */
+const hasPitch = (element: MeasureElement, pitch: Pitch): boolean => {
+  if (element.kind === 'note') return Pitch.equals(element.pitch, pitch);
+
+  if (element.kind === 'chord') {
+    return element.tones.some((tone) => Pitch.equals(tone.pitch, pitch));
+  }
+
+  return false;
+};
+
+/** The tie role at `pitch` in a note or chord tone — undefined if untied or `pitch` doesn't match */
+const tieRoleAt = (element: MeasureElement, pitch: Pitch): TieRole | undefined => {
+  if (element.kind === 'note') return Pitch.equals(element.pitch, pitch) ? element.tie : undefined;
+
+  if (element.kind === 'chord') {
+    return element.tones.find((tone) => Pitch.equals(tone.pitch, pitch))?.tie;
+  }
+
+  return undefined;
+};
+
+/** Rewrites the tie role at `pitch` within a note or a chord tone, leaving everything else as-is */
+const withTieRoleAt = (
+  element: Note | Chord,
+  pitch: Pitch,
+  tie: TieRole | undefined,
+): Note | Chord => {
+  if (element.kind === 'note') return { ...element, tie };
+
+  return {
+    ...element,
+    tones: NonEmptyArray.of(
+      element.tones.map((tone) => (Pitch.equals(tone.pitch, pitch) ? { ...tone, tie } : tone)),
+    ),
+  };
+};
+
+/**
  * Removes one tone from a chord (the eraser clicked on a chord, targeting
  * whichever pitch the click landed nearest — the caller derives that pitch
  * the same way `place` derives one to add). Collapses back to a plain `Note`
  * once only one tone is left, rather than leaving a one-tone "chord" around.
- * Refuses if `targetPitch` doesn't exactly match a tone, or if the chord (or
- * the matched tone) carries a tie/slur, for the same reason `erase` refuses
- * those on a plain note.
+ * Refuses if `targetPitch` doesn't exactly match a tone, or if the chord
+ * carries a chord-level slur, for the same reason `erase` refuses that on a
+ * plain note. A tie on the *targeted* tone is not refused here — the caller
+ * (`erase`) cleans it up first, the same way it does for a tied plain note;
+ * a tie on some *other* tone is untouched and doesn't block removing this one.
  */
 const removeChordTone = (
   score: Score,
@@ -343,10 +387,6 @@ const removeChordTone = (
   const toneIndex = chord.tones.findIndex((tone) => Pitch.equals(tone.pitch, targetPitch));
 
   if (toneIndex === -1) return Result.invalid('No matching pitch in that chord');
-
-  if (chord.tones.some((tone) => tone.tie)) {
-    return Result.invalid('Erasing part of a tied chord is not supported yet');
-  }
 
   const remaining = chord.tones.filter((_tone, index) => index !== toneIndex);
   const sharedNotations: Notations = {
@@ -373,6 +413,125 @@ const removeChordTone = (
   );
 
   return Result.ok(withVoiceElements(score, address, newElements));
+};
+
+/**
+ * Replaces the element at `address` with `newElement`, a possibly-different
+ * duration but the same onset — merging it and its surrounding rests into
+ * one span, then re-decomposing that span around the new element, the same
+ * math `erase` (merge) and `place` (decompose) each already do on their own.
+ * Generalized here to work on any `Note | Chord` directly (not just what
+ * `place`'s note/rest-only `ElementSpec` can construct), so a chord's dot
+ * cycle or articulation toggle can reuse it too. Assumes the caller has
+ * already ruled out anything (a tie, a slur) that would make rebuilding the
+ * element unsafe — this never touches tie fields itself.
+ */
+const replaceElement = (
+  score: Score,
+  address: ScoreAddress,
+  elements: readonly MeasureElement[],
+  oldDuration: Duration,
+  newElement: Note | Chord,
+): Result<Score> => {
+  const onset = onsetBefore(elements, address.element);
+
+  let startIndex = address.element;
+  let endIndex = address.element;
+  let mergedDuration = Duration.fractionOfWhole(oldDuration);
+
+  while (startIndex > 0) {
+    const neighbor = elements[startIndex - 1];
+
+    if (neighbor.kind !== 'rest') break;
+
+    startIndex -= 1;
+    mergedDuration = Fraction.add(mergedDuration, Duration.fractionOfWhole(neighbor.duration));
+  }
+
+  while (endIndex < elements.length - 1) {
+    const neighbor = elements[endIndex + 1];
+
+    if (neighbor.kind !== 'rest') break;
+
+    endIndex += 1;
+    mergedDuration = Fraction.add(mergedDuration, Duration.fractionOfWhole(neighbor.duration));
+  }
+
+  const mergedStart = onsetBefore(elements, startIndex);
+  const mergedEnd = Fraction.add(mergedStart, mergedDuration);
+  const newEnd = Fraction.add(onset, Duration.fractionOfWhole(newElement.duration));
+
+  if (Fraction.compare(newEnd, mergedEnd) > 0) {
+    return Result.invalid('Not enough rest time there for that duration');
+  }
+
+  const before = DurationDecomposition.decompose(Fraction.subtract(onset, mergedStart)).map(
+    (duration) => Rest.of(duration),
+  );
+  const after = DurationDecomposition.decompose(Fraction.subtract(mergedEnd, newEnd)).map(
+    (duration) => Rest.of(duration),
+  );
+
+  const newElements = [
+    ...elements.slice(0, startIndex),
+    ...before,
+    newElement,
+    ...after,
+    ...elements.slice(endIndex + 1),
+  ];
+
+  return Result.ok(withVoiceElements(score, address, newElements));
+};
+
+type SoundedShared = { duration: Duration } & Notations;
+
+/**
+ * Rewrites a placed note or chord's shared duration/notations fields (the
+ * right-click flyout's dot cycle and articulation toggle) via `transform`,
+ * re-decomposing the surrounding rests through `replaceElement`. A chord's
+ * tones and their individual per-tone ties carry over unchanged — only the
+ * chord-wide fields `transform` actually touches change, so dots and
+ * articulations apply to the whole chord at once rather than one tone.
+ *
+ * Refuses a rest or dynamic outright, and a chord-level slur (or a slurred
+ * note) for the same reason `erase` does: repairing a slur isn't built.
+ * Also refuses when any tone (or the note itself) is tied — not because
+ * `replaceElement` would disturb the tie (it only ever changes duration and
+ * shared notations, never `tie`/tones' pitches), but to keep this operation
+ * exactly as conservative as before chords could tie at all.
+ */
+const editSoundedElement = (
+  score: Score,
+  address: ScoreAddress,
+  transform: (shared: SoundedShared) => SoundedShared,
+): Result<Score> => {
+  const located = locateVoice(score, address);
+
+  if (!Result.isOk(located)) return Result.mapError(located);
+
+  const { elements } = located.value;
+  const target = elements[address.element];
+
+  if (!target) return Result.invalid('No element at that address');
+
+  if (target.kind !== 'note' && target.kind !== 'chord') {
+    return Result.invalid('Only a placed note or chord can be edited this way');
+  }
+
+  if (target.slur) return Result.invalid('Editing a slurred element is not supported yet');
+
+  if (target.kind === 'note' && target.tie) {
+    return Result.invalid('Editing a tied note is not supported yet');
+  }
+
+  if (target.kind === 'chord' && target.tones.some((tone) => tone.tie)) {
+    return Result.invalid('Editing a tied chord is not supported yet');
+  }
+
+  const updated = transform(target);
+  const newElement: Note | Chord = { ...target, ...updated };
+
+  return replaceElement(score, address, elements, target.duration, newElement);
 };
 
 export const Placement = {
@@ -454,7 +613,9 @@ export const Placement = {
    * removed from the chord, or the chord collapses to a plain `Note` if one
    * tone is left. Without a `targetPitch`, a chord is refused outright
    * (unchanged from before chords were placeable), since there's no
-   * reasonable single tone to pick.
+   * reasonable single tone to pick. If that specific tone carries a tie, it's
+   * cleaned up first (same as a tied plain note, below) — a tie on some
+   * *other* tone in the chord is left alone and doesn't block the erase.
    *
    * A tied note's tie is removed first (via `removeTie`, cleaning up
    * whichever neighbor it's tied to) before the usual rest-merge — erasing a
@@ -476,7 +637,31 @@ export const Placement = {
     if (target.kind === 'chord') {
       if (!targetPitch) return Result.invalid('Chords are not editable yet');
 
-      return removeChordTone(score, address, target, targetPitch, elements);
+      const toneTie = tieRoleAt(target, targetPitch);
+
+      if (!toneTie) return removeChordTone(score, address, target, targetPitch, elements);
+
+      const untied = Placement.removeTie(score, address, targetPitch);
+
+      if (!Result.isOk(untied)) return untied;
+
+      const relocated = locateVoice(untied.value, address);
+
+      if (!Result.isOk(relocated)) return relocated;
+
+      const relocatedTarget = relocated.value.elements[address.element];
+
+      if (relocatedTarget?.kind !== 'chord') {
+        return Result.invalid('Unexpected element after removing its tie');
+      }
+
+      return removeChordTone(
+        untied.value,
+        address,
+        relocatedTarget,
+        targetPitch,
+        relocated.value.elements,
+      );
     }
 
     if (target.kind === 'dynamic') {
@@ -565,52 +750,99 @@ export const Placement = {
    * `ContextWalk` already carries the previous effective clef forward on
    * its own — the same reasoning `MeasureOps.addMeasure` follows.
    *
-   * Refuses the whole reset only if the measure contains a tied or slurred
-   * note, or a chord carrying a tie on any tone or a chord-level slur: any
-   * of those would strand its matching role in an adjacent measure and
-   * break `Score.check`, and ties/slurs aren't user-editable in v1.
+   * A tied note or chord tone doesn't block the reset: any tie reaching
+   * into an adjacent measure is cleaned up first (via `removeTie`, the same
+   * as erasing that one note/tone directly would), downgrading whichever
+   * neighbor it's tied to so nothing is left stranded. A tie entirely
+   * contained within this measure needs no such cleanup — both ends vanish
+   * together. Still refuses the whole reset if the measure contains a
+   * slurred note or chord: repairing a slur isn't built, and slurs aren't
+   * user-editable in v1.
    */
   eraseBar(score: Score, measureIndex: number): Result<Score> {
     const measure = score.measures[measureIndex];
 
     if (!measure) return Result.invalid(`No measure at index ${measureIndex}`);
 
-    for (const content of measure.contents) {
-      for (const voice of content.voices) {
-        for (const element of voice.elements) {
-          if (element.kind === 'note' && (element.tie || element.slur)) {
-            return Result.invalid(
-              'This measure has a tied or slurred note; erasing it is not supported yet',
-            );
+    const tiedTargets: { address: ScoreAddress; pitch?: Pitch }[] = [];
+
+    for (let staffIndex = 0; staffIndex < measure.contents.length; staffIndex += 1) {
+      const content = measure.contents[staffIndex];
+
+      for (let voiceIndex = 0; voiceIndex < content.voices.length; voiceIndex += 1) {
+        const elements = content.voices[voiceIndex].elements;
+
+        for (let elementIndex = 0; elementIndex < elements.length; elementIndex += 1) {
+          const element = elements[elementIndex];
+          const address: ScoreAddress = {
+            measure: measureIndex,
+            staff: staffIndex,
+            voice: voiceIndex,
+            element: elementIndex,
+          };
+
+          if (element.kind === 'note') {
+            if (element.slur) {
+              return Result.invalid(
+                'This measure has a slurred note; erasing it is not supported yet',
+              );
+            }
+
+            if (element.tie) tiedTargets.push({ address });
           }
 
-          if (
-            element.kind === 'chord' &&
-            (element.slur || element.tones.some((tone) => tone.tie))
-          ) {
-            return Result.invalid(
-              'This measure has a tied or slurred chord; erasing it is not supported yet',
-            );
+          if (element.kind === 'chord') {
+            if (element.slur) {
+              return Result.invalid(
+                'This measure has a slurred chord; erasing it is not supported yet',
+              );
+            }
+
+            for (const tone of element.tones) {
+              if (tone.tie) tiedTargets.push({ address, pitch: tone.pitch });
+            }
           }
         }
       }
     }
 
-    const time = ContextWalk.walk(score)[measureIndex][0].time;
+    let workingScore = score;
+
+    for (const { address, pitch } of tiedTargets) {
+      const located = locateVoice(workingScore, address);
+
+      if (!Result.isOk(located)) continue;
+
+      const current = located.value.elements[address.element];
+
+      // Already cleared as a side effect of an earlier tie in this same
+      // loop (its partner sat elsewhere in this measure) — nothing left to do.
+      if (!current || (current.kind !== 'note' && current.kind !== 'chord')) continue;
+
+      const tiePitch = pitch ?? (current.kind === 'note' ? current.pitch : undefined);
+
+      if (!tiePitch || !tieRoleAt(current, tiePitch)) continue;
+
+      const untied = Placement.removeTie(workingScore, address, pitch);
+
+      if (Result.isOk(untied)) workingScore = untied.value;
+    }
+
+    const time = ContextWalk.walk(workingScore)[measureIndex][0].time;
 
     const resetMeasure: Measure = {
       ...measure,
       contents: NonEmptyArray.of(
-        score.staves.map((_staff, staffIndex) =>
+        workingScore.staves.map((_staff, staffIndex) =>
           RestBacking.emptyStaffContent(time, measure.contents[staffIndex]?.clef),
         ),
       ),
     };
 
     return Result.ok({
-      ...score,
+      ...workingScore,
       measures: NonEmptyArray.of(
-        score.measures.map((m, index) => (index === measureIndex ? resetMeasure : m)),
+        workingScore.measures.map((m, index) => (index === measureIndex ? resetMeasure : m)),
       ),
     });
   },
@@ -652,59 +884,23 @@ export const Placement = {
     return Result.ok(withVoiceElements(score, address, newElements));
   },
 
-  /**
-   * Rewrites a placed note (the right-click flyout's dot cycle and
-   * articulation toggle), reusing `erase` then `place` at the note's own
-   * onset so the surrounding rests re-decompose exactly as they would for
-   * any other duration change. Refuses a chord, dynamic, rest, or a
-   * tied/slurred note, for the same reason `erase` does.
-   */
-  editNote(score: Score, address: ScoreAddress, transform: (note: Note) => Note): Result<Score> {
-    const located = locateVoice(score, address);
-
-    if (!Result.isOk(located)) return Result.mapError(located);
-
-    const { elements } = located.value;
-    const target = elements[address.element];
-
-    if (!target) return Result.invalid('No element at that address');
-
-    if (target.kind !== 'note') return Result.invalid('Only a placed note can be edited this way');
-
-    if (target.tie || target.slur) {
-      return Result.invalid('Editing a tied or slurred note is not supported yet');
-    }
-
-    const onset = onsetBefore(elements, address.element);
-    const updated = transform(target);
-    const erased = Placement.erase(score, address);
-
-    if (!Result.isOk(erased)) return erased;
-
-    return Placement.place(
-      erased.value,
-      { measure: address.measure, staff: address.staff, voice: address.voice, onset },
-      { kind: 'note', pitch: updated.pitch, duration: updated.duration, notations: updated },
-    );
-  },
-
-  /** Cycles a placed note's augmentation dots: none → single → double → none */
+  /** Cycles a placed note or chord's augmentation dots: none → single → double → none */
   cycleDots(score: Score, address: ScoreAddress): Result<Score> {
-    return Placement.editNote(score, address, (note) => ({
-      ...note,
-      duration: DurationOps.cycleDots(note.duration),
+    return editSoundedElement(score, address, (shared) => ({
+      ...shared,
+      duration: DurationOps.cycleDots(shared.duration),
     }));
   },
 
-  /** Adds `articulation` to a placed note if absent, removes it if present */
+  /** Adds `articulation` to a placed note or chord if absent, removes it if present */
   toggleArticulation(
     score: Score,
     address: ScoreAddress,
     articulation: Articulation,
   ): Result<Score> {
-    return Placement.editNote(score, address, (note) => ({
-      ...note,
-      articulations: DurationOps.toggleArticulation(note.articulations, articulation),
+    return editSoundedElement(score, address, (shared) => ({
+      ...shared,
+      articulations: DurationOps.toggleArticulation(shared.articulations, articulation),
     }));
   },
 
@@ -742,33 +938,60 @@ export const Placement = {
 
   /**
    * Ties `beginAddress` into `endAddress` — the pallet's tie tool, or the
-   * right-click flyout's "start tie," clicking a second note to close it.
-   * `endAddress` must be exactly the next sounded (non-dynamic) element
-   * after `beginAddress` in the same staff/voice, continuing into the next
-   * measure if `beginAddress` is the last one in its own — the only
-   * adjacency `Score.check` and the renderer ever resolve a tie through,
-   * since neither tracks an explicit link between tied notes. Refuses
-   * anything else: a rest or chord in between, or a pitch mismatch.
+   * right-click flyout's "start tie," clicking a second note or chord to
+   * close it. `endAddress` must be exactly the next sounded (non-dynamic)
+   * element after `beginAddress` in the same staff/voice, continuing into
+   * the next measure if `beginAddress` is the last one in its own — the
+   * only adjacency `Score.check` and the renderer ever resolve a tie
+   * through, since neither tracks an explicit link between tied notes.
+   * Refuses anything else: a rest in between, or a pitch mismatch.
    *
-   * `beginAddress` may already carry an `End` role (it received a tie from
-   * *before* it) — that's promoted to `Both` rather than refused, which is
-   * how a tie chain across three or more measures gets built: close a tie
-   * into a note, then start a fresh one from that same note into the next.
-   * `endAddress` must still be completely untied; extending a chain only
-   * ever grows forward one link at a time from its current last note.
+   * A tie always connects exactly one pitch to a matching pitch — it can
+   * start or end on a plain note, or on one tone within a chord, in any
+   * combination. `pitch` says which: required when `beginAddress` is a
+   * chord (there's no single pitch to default to), optional for a plain
+   * note (defaults to its own pitch; if given anyway, it must match).
+   * `endAddress`'s matching tone/note is found the same way, by `pitch` —
+   * no separate pitch is needed for the end side, since a tie only ever
+   * connects equal pitches.
+   *
+   * `beginAddress`'s tone may already carry an `End` role (it received a
+   * tie from *before* it) — that's promoted to `Both` rather than refused,
+   * which is how a tie chain across three or more measures gets built:
+   * close a tie into a note, then start a fresh one from that same note
+   * into the next. `endAddress`'s tone must still be completely untied;
+   * extending a chain only ever grows forward one link at a time from its
+   * current last note.
    */
-  closeTie(score: Score, beginAddress: ScoreAddress, endAddress: ScoreAddress): Result<Score> {
+  closeTie(
+    score: Score,
+    beginAddress: ScoreAddress,
+    endAddress: ScoreAddress,
+    pitch?: Pitch,
+  ): Result<Score> {
     const beginLocated = locateVoice(score, beginAddress);
 
     if (!Result.isOk(beginLocated)) return Result.mapError(beginLocated);
 
-    const beginNote = beginLocated.value.elements[beginAddress.element];
+    const beginElement = beginLocated.value.elements[beginAddress.element];
 
-    if (!beginNote) return Result.invalid('No element at that address');
+    if (!beginElement) return Result.invalid('No element at that address');
 
-    if (beginNote.kind !== 'note') return Result.invalid('Only a placed note can start a tie');
+    if (beginElement.kind !== 'note' && beginElement.kind !== 'chord') {
+      return Result.invalid('Only a placed note or chord can start a tie');
+    }
 
-    if (beginNote.tie === TieRole.Begin || beginNote.tie === TieRole.Both) {
+    const tiePitch = pitch ?? (beginElement.kind === 'note' ? beginElement.pitch : undefined);
+
+    if (!tiePitch) return Result.invalid('A tie starting on a chord needs a tone to start from');
+
+    if (!hasPitch(beginElement, tiePitch)) {
+      return Result.invalid('That pitch is not part of the starting note or chord');
+    }
+
+    const beginTie = tieRoleAt(beginElement, tiePitch);
+
+    if (beginTie === TieRole.Begin || beginTie === TieRole.Both) {
       return Result.invalid('That note already ties forward into another note');
     }
 
@@ -788,31 +1011,48 @@ export const Placement = {
       );
     }
 
-    if (next.element.kind !== 'note') return Result.invalid('A tie must connect to another note');
+    if (next.element.kind !== 'note' && next.element.kind !== 'chord') {
+      return Result.invalid('A tie must connect to another note or chord');
+    }
 
-    if (next.element.tie) return Result.invalid('That note already participates in a tie');
-
-    if (!Pitch.equals(next.element.pitch, beginNote.pitch)) {
+    if (!hasPitch(next.element, tiePitch)) {
       return Result.invalid('A tie must connect notes of the same pitch');
     }
 
-    const beginRole = beginNote.tie === TieRole.End ? TieRole.Both : TieRole.Begin;
-    const withBegin = setElementAt(score, beginAddress, { ...beginNote, tie: beginRole });
+    if (tieRoleAt(next.element, tiePitch)) {
+      return Result.invalid('That note already participates in a tie');
+    }
+
+    const beginRole = beginTie === TieRole.End ? TieRole.Both : TieRole.Begin;
+    const withBegin = setElementAt(
+      score,
+      beginAddress,
+      withTieRoleAt(beginElement, tiePitch, beginRole),
+    );
 
     if (!Result.isOk(withBegin)) return withBegin;
 
-    return setElementAt(withBegin.value, next.address, { ...next.element, tie: TieRole.End });
+    return setElementAt(
+      withBegin.value,
+      next.address,
+      withTieRoleAt(next.element, tiePitch, TieRole.End),
+    );
   },
 
   /**
-   * Removes a note's tie, whichever role it carries, cleaning up its
-   * partner note (the previous one for an End/Both role, the next one for
-   * a Begin/Both role, both for Both) — same adjacency `closeTie` connects
+   * Removes a tie at `address`, whichever role it carries, cleaning up its
+   * partner (the previous one for an End/Both role, the next one for a
+   * Begin/Both role, both for Both) — same adjacency `closeTie` connects
    * them through. A partner still carrying the *other* half of a longer
    * chain (a `Both`) is downgraded to just that half rather than fully
    * untied, so removing one link never disturbs a chain beyond it.
+   *
+   * `pitch` picks out which tone's tie to remove within a chord — required
+   * there, optional (defaulting to its own pitch) for a plain note. The
+   * partner side is matched by the same pitch, whether it's a plain note or
+   * another chord tone.
    */
-  removeTie(score: Score, address: ScoreAddress): Result<Score> {
+  removeTie(score: Score, address: ScoreAddress, pitch?: Pitch): Result<Score> {
     const located = locateVoice(score, address);
 
     if (!Result.isOk(located)) return Result.mapError(located);
@@ -821,40 +1061,62 @@ export const Placement = {
 
     if (!target) return Result.invalid('No element at that address');
 
-    if (target.kind !== 'note') return Result.invalid('Only a note can have its tie removed');
+    if (target.kind !== 'note' && target.kind !== 'chord') {
+      return Result.invalid('Only a note or chord can have its tie removed');
+    }
 
-    if (!target.tie) return Result.invalid('That note has no tie to remove');
+    const tiePitch = pitch ?? (target.kind === 'note' ? target.pitch : undefined);
+
+    if (!tiePitch) return Result.invalid('Removing a tie from a chord needs a tone to target');
+
+    if (!hasPitch(target, tiePitch)) {
+      return Result.invalid('That pitch is not part of this note or chord');
+    }
+
+    const tie = tieRoleAt(target, tiePitch);
+
+    if (!tie) return Result.invalid('That note has no tie to remove');
 
     let workingScore = score;
 
-    if (target.tie === TieRole.Begin || target.tie === TieRole.Both) {
+    if (tie === TieRole.Begin || tie === TieRole.Both) {
       const next = nextElementAddress(workingScore, address);
 
-      if (next && next.element.kind === 'note' && next.element.tie) {
-        const downgraded = next.element.tie === TieRole.Both ? TieRole.Begin : undefined;
-        const updated = setElementAt(workingScore, next.address, {
-          ...next.element,
-          tie: downgraded,
-        });
+      if (next && (next.element.kind === 'note' || next.element.kind === 'chord')) {
+        const nextTie = tieRoleAt(next.element, tiePitch);
 
-        if (Result.isOk(updated)) workingScore = updated.value;
+        if (nextTie) {
+          const downgraded = nextTie === TieRole.Both ? TieRole.Begin : undefined;
+          const updated = setElementAt(
+            workingScore,
+            next.address,
+            withTieRoleAt(next.element, tiePitch, downgraded),
+          );
+
+          if (Result.isOk(updated)) workingScore = updated.value;
+        }
       }
     }
 
-    if (target.tie === TieRole.End || target.tie === TieRole.Both) {
+    if (tie === TieRole.End || tie === TieRole.Both) {
       const previous = previousElementAddress(workingScore, address);
 
-      if (previous && previous.element.kind === 'note' && previous.element.tie) {
-        const downgraded = previous.element.tie === TieRole.Both ? TieRole.End : undefined;
-        const updated = setElementAt(workingScore, previous.address, {
-          ...previous.element,
-          tie: downgraded,
-        });
+      if (previous && (previous.element.kind === 'note' || previous.element.kind === 'chord')) {
+        const prevTie = tieRoleAt(previous.element, tiePitch);
 
-        if (Result.isOk(updated)) workingScore = updated.value;
+        if (prevTie) {
+          const downgraded = prevTie === TieRole.Both ? TieRole.End : undefined;
+          const updated = setElementAt(
+            workingScore,
+            previous.address,
+            withTieRoleAt(previous.element, tiePitch, downgraded),
+          );
+
+          if (Result.isOk(updated)) workingScore = updated.value;
+        }
       }
     }
 
-    return setElementAt(workingScore, address, { ...target, tie: undefined });
+    return setElementAt(workingScore, address, withTieRoleAt(target, tiePitch, undefined));
   },
 };

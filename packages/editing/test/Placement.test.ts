@@ -414,15 +414,27 @@ describe('Placement.erase', () => {
     expectInvalid(Placement.erase(score, addressAt(0), c4));
   });
 
-  it('refuses to erase part of a tied or slurred chord', () => {
+  it('refuses to erase part of a slurred chord', () => {
+    const slurred = expectOk(Chord.create([g4, b4], quarter, { slur: SlurRole.Begin }));
+    const score = scoreWith([slurred, Rest.of(Duration.of(NoteValue.Half, { dots: 1 }))]);
+
+    expectInvalid(Placement.erase(score, addressAt(0), g4));
+  });
+
+  it('erasing a tied tone from a chord cleans up just that tie, leaving the rest of the chord', () => {
     const tied = expectOk(
       Chord.create([{ pitch: g4, tie: TieRole.Begin }, { pitch: b4 }], quarter),
     );
-    const slurred = expectOk(Chord.create([g4, b4], quarter, { slur: SlurRole.Begin }));
-    const score = scoreWith([tied, slurred, Rest.of(half)]);
+    const next = expectOk(Chord.create([{ pitch: g4, tie: TieRole.End }, { pitch: d4 }], quarter));
+    const score = scoreWith([tied, next, Rest.of(half)]);
 
-    expectInvalid(Placement.erase(score, addressAt(0), g4));
-    expectInvalid(Placement.erase(score, addressAt(1), g4));
+    const erased = expectOk(Placement.erase(score, addressAt(0), g4));
+
+    expectScoreCheckOk(erased);
+    // only one tone (b4) is left in the first chord, so it collapses to a note
+    expect(voiceElements(erased)[0]).toEqual(Note.of(b4, quarter));
+    // the tied partner's own tie is cleared too, since its match is gone
+    expect(voiceElements(erased)[1]).toEqual(expectOk(Chord.create([g4, d4], quarter)));
   });
 
   it('erasing a tied note removes the tie, leaving its partner untied', () => {
@@ -615,20 +627,28 @@ describe('Placement.eraseBar', () => {
     );
   });
 
-  it('refuses to reset a measure containing a chord with a tied tone', () => {
+  it('resets a measure whose chord ties forward, clearing the next measure’s matching tie', () => {
     const staves = [Staff.of(Clef.Treble)];
-    const chord = expectOk(
-      Chord.create([{ pitch: g4, tie: TieRole.Begin }, { pitch: pitch(PitchLetter.B, 4) }], whole),
-    );
+    const first = expectOk(Chord.create([{ pitch: g4, tie: TieRole.Begin }, { pitch: b4 }], whole));
+    const second = expectOk(Chord.create([{ pitch: g4, tie: TieRole.End }, { pitch: b4 }], whole));
     const score = buildScore({
       time: fourFour,
       staves,
       measures: [
-        { contents: NonEmptyArray.of([StaffContent.singleVoice(NonEmptyArray.of([chord]))]) },
+        { contents: NonEmptyArray.of([StaffContent.singleVoice(NonEmptyArray.of([first]))]) },
+        { contents: NonEmptyArray.of([StaffContent.singleVoice(NonEmptyArray.of([second]))]) },
       ],
     });
 
-    expectInvalid(Placement.eraseBar(score, 0));
+    const reset = expectOk(Placement.eraseBar(score, 0));
+
+    expectScoreCheckOk(reset);
+    expect(reset.measures[0].contents[0].voices[0].elements).toEqual(
+      RestBacking.wholeMeasureRests(fourFour),
+    );
+    expect(reset.measures[1].contents[0].voices[0].elements[0]).toEqual(
+      expectOk(Chord.create([g4, b4], whole)),
+    );
   });
 
   it('refuses to reset a measure containing a slurred chord', () => {
@@ -647,7 +667,7 @@ describe('Placement.eraseBar', () => {
     expectInvalid(Placement.eraseBar(score, 0));
   });
 
-  it('refuses to reset a measure containing a tied note', () => {
+  it('resets a measure whose note ties forward, clearing the next measure’s matching tie', () => {
     const staves = [Staff.of(Clef.Treble)];
     const score = buildScore({
       time: fourFour,
@@ -656,7 +676,7 @@ describe('Placement.eraseBar', () => {
         {
           contents: NonEmptyArray.of([
             StaffContent.singleVoice(
-              NonEmptyArray.of([Note.of(g4, half, { tie: TieRole.Begin }), Note.of(g4, half)]),
+              NonEmptyArray.of([Note.of(g4, whole, { tie: TieRole.Begin })]),
             ),
           ]),
         },
@@ -668,7 +688,81 @@ describe('Placement.eraseBar', () => {
       ],
     });
 
-    expectInvalid(Placement.eraseBar(score, 0));
+    const reset = expectOk(Placement.eraseBar(score, 0));
+
+    expectScoreCheckOk(reset);
+    expect(reset.measures[0].contents[0].voices[0].elements).toEqual(
+      RestBacking.wholeMeasureRests(fourFour),
+    );
+    expect(reset.measures[1].contents[0].voices[0].elements[0]).toEqual(Note.of(g4, whole));
+  });
+
+  it('resets a measure whose note closes a tie, clearing the previous measure’s matching tie', () => {
+    // The reported bug: erasing the measure that *closes* a tie (not the one
+    // that starts it) must clean up the earlier measure's dangling Begin too.
+    const staves = [Staff.of(Clef.Treble)];
+    const score = buildScore({
+      time: fourFour,
+      staves,
+      measures: [
+        {
+          contents: NonEmptyArray.of([
+            StaffContent.singleVoice(
+              NonEmptyArray.of([Note.of(g4, whole, { tie: TieRole.Begin })]),
+            ),
+          ]),
+        },
+        {
+          contents: NonEmptyArray.of([
+            StaffContent.singleVoice(NonEmptyArray.of([Note.of(g4, whole, { tie: TieRole.End })])),
+          ]),
+        },
+      ],
+    });
+
+    const reset = expectOk(Placement.eraseBar(score, 1));
+
+    expectScoreCheckOk(reset);
+    expect(reset.measures[0].contents[0].voices[0].elements[0]).toEqual(Note.of(g4, whole));
+    expect(reset.measures[1].contents[0].voices[0].elements).toEqual(
+      RestBacking.wholeMeasureRests(fourFour),
+    );
+  });
+
+  it('resets the middle measure of a three-measure chain, untangling both neighbors', () => {
+    const staves = [Staff.of(Clef.Treble)];
+    const score = buildScore({
+      time: fourFour,
+      staves,
+      measures: [
+        {
+          contents: NonEmptyArray.of([
+            StaffContent.singleVoice(
+              NonEmptyArray.of([Note.of(g4, whole, { tie: TieRole.Begin })]),
+            ),
+          ]),
+        },
+        {
+          contents: NonEmptyArray.of([
+            StaffContent.singleVoice(NonEmptyArray.of([Note.of(g4, whole, { tie: TieRole.Both })])),
+          ]),
+        },
+        {
+          contents: NonEmptyArray.of([
+            StaffContent.singleVoice(NonEmptyArray.of([Note.of(g4, whole, { tie: TieRole.End })])),
+          ]),
+        },
+      ],
+    });
+
+    const reset = expectOk(Placement.eraseBar(score, 1));
+
+    expectScoreCheckOk(reset);
+    expect(reset.measures[0].contents[0].voices[0].elements[0]).toEqual(Note.of(g4, whole));
+    expect(reset.measures[1].contents[0].voices[0].elements).toEqual(
+      RestBacking.wholeMeasureRests(fourFour),
+    );
+    expect(reset.measures[2].contents[0].voices[0].elements[0]).toEqual(Note.of(g4, whole));
   });
 
   it('rejects an out-of-range measure index', () => {
@@ -781,15 +875,32 @@ describe('Placement.cycleDots', () => {
     expect(voiceElements(cleared)[0]).toEqual(Note.of(g4, quarter));
   });
 
-  it('refuses a rest, chord, or tied note', () => {
+  it('refuses a rest or a tied note', () => {
     expectInvalid(Placement.cycleDots(scoreWith([Rest.of(quarter)]), addressAt(0)));
-
-    const chord = expectOk(Chord.create([g4, pitch(PitchLetter.B, 4)], quarter));
-
-    expectInvalid(Placement.cycleDots(scoreWith([chord]), addressAt(0)));
     expectInvalid(
       Placement.cycleDots(scoreWith([Note.of(g4, quarter, { tie: TieRole.Begin })]), addressAt(0)),
     );
+  });
+
+  it('cycles a chord as a whole, keeping every tone', () => {
+    const chord = expectOk(Chord.create([g4, b4], quarter));
+    const score = scoreWith([chord, Rest.of(Duration.of(NoteValue.Half, { dots: 1 }))]);
+
+    const once = expectOk(Placement.cycleDots(score, addressAt(0)));
+
+    expectScoreCheckOk(once);
+    expect(voiceElements(once)[0]).toEqual(
+      expectOk(Chord.create([g4, b4], Duration.of(NoteValue.Quarter, { dots: 1 }))),
+    );
+  });
+
+  it('refuses a chord with any tied tone', () => {
+    const chord = expectOk(
+      Chord.create([{ pitch: g4, tie: TieRole.Begin }, { pitch: b4 }], quarter),
+    );
+    const score = scoreWith([chord, Rest.of(Duration.of(NoteValue.Half, { dots: 1 }))]);
+
+    expectInvalid(Placement.cycleDots(score, addressAt(0)));
   });
 });
 
@@ -827,6 +938,24 @@ describe('Placement.toggleArticulation', () => {
 
     expect(voiceElements(toggled)[0]).toEqual(
       Note.of(g4, dotted, { articulations: NonEmptyArray.of([Articulation.Accent]) }),
+    );
+  });
+
+  it('applies to a chord as a whole, keeping every tone', () => {
+    const chord = expectOk(Chord.create([g4, b4], quarter));
+    const score = scoreWith([chord, Rest.of(Duration.of(NoteValue.Half, { dots: 1 }))]);
+
+    const toggled = expectOk(
+      Placement.toggleArticulation(score, addressAt(0), Articulation.Marcato),
+    );
+
+    expectScoreCheckOk(toggled);
+    expect(voiceElements(toggled)[0]).toEqual(
+      expectOk(
+        Chord.create([g4, b4], quarter, {
+          articulations: NonEmptyArray.of([Articulation.Marcato]),
+        }),
+      ),
     );
   });
 });
@@ -1042,6 +1171,72 @@ describe('Placement.closeTie', () => {
 
     expectInvalid(Placement.closeTie(score, addressAt(0), addressAt(0)));
   });
+
+  it('ties one tone of a chord into the matching tone of the next chord', () => {
+    const first = expectOk(Chord.create([g4, b4], half));
+    const second = expectOk(Chord.create([g4, d4], half));
+    const score = scoreWith([first, second]);
+
+    const tied = expectOk(Placement.closeTie(score, addressAt(0), addressAt(1), g4));
+
+    expectScoreCheckOk(tied);
+    expect(voiceElements(tied)[0]).toEqual(
+      expectOk(Chord.create([{ pitch: g4, tie: TieRole.Begin }, { pitch: b4 }], half)),
+    );
+    expect(voiceElements(tied)[1]).toEqual(
+      expectOk(Chord.create([{ pitch: g4, tie: TieRole.End }, { pitch: d4 }], half)),
+    );
+  });
+
+  it('ties a tone of a chord into a following plain note of the same pitch', () => {
+    const chord = expectOk(Chord.create([g4, b4], half));
+    const score = scoreWith([chord, Note.of(g4, half)]);
+
+    const tied = expectOk(Placement.closeTie(score, addressAt(0), addressAt(1), g4));
+
+    expectScoreCheckOk(tied);
+    expect(voiceElements(tied)[0]).toEqual(
+      expectOk(Chord.create([{ pitch: g4, tie: TieRole.Begin }, { pitch: b4 }], half)),
+    );
+    expect(voiceElements(tied)[1]).toEqual(Note.of(g4, half, { tie: TieRole.End }));
+  });
+
+  it('ties a plain note into a matching tone of a following chord', () => {
+    const chord = expectOk(Chord.create([g4, d4], half));
+    const score = scoreWith([Note.of(g4, half), chord]);
+
+    const tied = expectOk(Placement.closeTie(score, addressAt(0), addressAt(1)));
+
+    expectScoreCheckOk(tied);
+    expect(voiceElements(tied)[0]).toEqual(Note.of(g4, half, { tie: TieRole.Begin }));
+    expect(voiceElements(tied)[1]).toEqual(
+      expectOk(Chord.create([{ pitch: g4, tie: TieRole.End }, { pitch: d4 }], half)),
+    );
+  });
+
+  it('refuses to start a tie on a chord without saying which tone', () => {
+    const first = expectOk(Chord.create([g4, b4], half));
+    const second = expectOk(Chord.create([g4, d4], half));
+    const score = scoreWith([first, second]);
+
+    expectInvalid(Placement.closeTie(score, addressAt(0), addressAt(1)));
+  });
+
+  it('refuses a tie pitch that matches no tone in the starting chord', () => {
+    const first = expectOk(Chord.create([g4, b4], half));
+    const second = expectOk(Chord.create([g4, d4], half));
+    const score = scoreWith([first, second]);
+
+    expectInvalid(Placement.closeTie(score, addressAt(0), addressAt(1), c4));
+  });
+
+  it('refuses when the next chord has no tone matching the tied pitch', () => {
+    const first = expectOk(Chord.create([g4, b4], half));
+    const second = expectOk(Chord.create([a4, d4], half));
+    const score = scoreWith([first, second]);
+
+    expectInvalid(Placement.closeTie(score, addressAt(0), addressAt(1), g4));
+  });
 });
 
 describe('Placement.removeTie', () => {
@@ -1135,5 +1330,53 @@ describe('Placement.removeTie', () => {
     const score = scoreWith([Rest.of(whole)]);
 
     expectInvalid(Placement.removeTie(score, addressAt(0)));
+  });
+
+  it('removes the tie from one tone of a chord, leaving other tones and ties alone', () => {
+    const first = expectOk(
+      Chord.create(
+        [
+          { pitch: g4, tie: TieRole.Begin },
+          { pitch: b4, tie: TieRole.Begin },
+        ],
+        half,
+      ),
+    );
+    const second = expectOk(
+      Chord.create(
+        [
+          { pitch: g4, tie: TieRole.End },
+          { pitch: b4, tie: TieRole.End },
+        ],
+        half,
+      ),
+    );
+    const score = scoreWith([first, second]);
+
+    const untied = expectOk(Placement.removeTie(score, addressAt(0), g4));
+
+    expectScoreCheckOk(untied);
+    expect(voiceElements(untied)[0]).toEqual(
+      expectOk(Chord.create([{ pitch: g4 }, { pitch: b4, tie: TieRole.Begin }], half)),
+    );
+    expect(voiceElements(untied)[1]).toEqual(
+      expectOk(Chord.create([{ pitch: g4 }, { pitch: b4, tie: TieRole.End }], half)),
+    );
+  });
+
+  it('refuses to remove a chord tie without saying which tone', () => {
+    const first = expectOk(Chord.create([{ pitch: g4, tie: TieRole.Begin }, { pitch: b4 }], half));
+    const second = expectOk(Chord.create([{ pitch: g4, tie: TieRole.End }, { pitch: b4 }], half));
+    const score = scoreWith([first, second]);
+
+    expectInvalid(Placement.removeTie(score, addressAt(0)));
+  });
+
+  it('refuses a pitch that matches no tone in the chord', () => {
+    const first = expectOk(Chord.create([{ pitch: g4, tie: TieRole.Begin }, { pitch: b4 }], half));
+    const second = expectOk(Chord.create([{ pitch: g4, tie: TieRole.End }, { pitch: b4 }], half));
+    const score = scoreWith([first, second]);
+
+    expectInvalid(Placement.removeTie(score, addressAt(0), c4));
   });
 });

@@ -103,12 +103,14 @@ type EditorState = {
   /** The tie pallet tool (or the right-click flyout's "start tie") is selected */
   tieMode: boolean;
   /**
-   * The note that started a tie, awaiting a second click on the note it
-   * ties into. Cleared by picking a different tool/eraser mode, or by
-   * successfully closing the tie — an unsuccessful attempt (wrong note
-   * clicked) leaves it pending, so a misclick doesn't force starting over.
+   * The note or chord that started a tie, awaiting a second click on
+   * whatever it ties into. `pitch` disambiguates which tone within a chord
+   * (undefined for a plain note, whose own pitch is unambiguous). Cleared by
+   * picking a different tool/eraser mode, or by successfully closing the
+   * tie — an unsuccessful attempt (wrong note clicked) leaves it pending, so
+   * a misclick doesn't force starting over.
    */
-  pendingTie: ScoreAddress | null;
+  pendingTie: { address: ScoreAddress; pitch?: Pitch } | null;
   recents: readonly ToolConfig[];
 };
 
@@ -336,29 +338,39 @@ export function createEditorStore(initial: Score = blankScore()) {
     },
 
     /**
-     * Starts a tie from `address` — a click on an untied note while the tie
-     * tool is active, or the right-click flyout's "start tie." Also engages
-     * tie mode itself, so starting a tie from the flyout (without the pallet
-     * tool selected) still leaves the interactive staff expecting a closing
-     * click next.
+     * Starts a tie from `address` — a click on an untied note or chord tone
+     * while the tie tool is active, or the right-click flyout's "start
+     * tie." `pitch` says which tone when `address` is a chord (unused, and
+     * fine to omit, for a plain note). Also engages tie mode itself, so
+     * starting a tie from the flyout (without the pallet tool selected)
+     * still leaves the interactive staff expecting a closing click next.
      */
-    startTie(address: ScoreAddress): void {
+    startTie(address: ScoreAddress, pitch?: Pitch): void {
       state.tieMode = true;
       state.activeTool = null;
       state.eraserMode = null;
-      state.pendingTie = address;
+      state.pendingTie = { address, pitch };
     },
 
     /**
-     * Closes the pending tie into `endAddress`. On success, clears
-     * `pendingTie` but stays in tie mode, ready for the next pair. On
+     * Closes the pending tie into `endAddress` — the matching pitch (the
+     * pending chord tone's, or the pending note's own) is carried over from
+     * `startTie`, since a tie only ever connects equal pitches. On success,
+     * clears `pendingTie` but stays in tie mode, ready for the next pair. On
      * failure (the clicked note wasn't a valid match), leaves `pendingTie`
      * as-is so the user can just click again.
      */
     closeTie(endAddress: ScoreAddress): Result<Score> {
       if (!state.pendingTie) return Result.invalid('No tie is pending');
 
-      const result = commitResult(Placement.closeTie(state.score, state.pendingTie, endAddress));
+      const result = commitResult(
+        Placement.closeTie(
+          state.score,
+          state.pendingTie.address,
+          endAddress,
+          state.pendingTie.pitch,
+        ),
+      );
 
       if (Result.isOk(result)) state.pendingTie = null;
 
@@ -368,10 +380,11 @@ export function createEditorStore(initial: Score = blankScore()) {
     /**
      * The right-click flyout's "remove tie" — `erase` cleans up a tied
      * note's partner on its own via `Placement.removeTie`, so this is only
-     * needed to drop a tie without removing the note itself.
+     * needed to drop a tie without removing the note itself. `pitch`
+     * disambiguates which tone when `address` is a chord.
      */
-    removeTie(address: ScoreAddress): Result<Score> {
-      return commitResult(Placement.removeTie(state.score, address));
+    removeTie(address: ScoreAddress, pitch?: Pitch): Result<Score> {
+      return commitResult(Placement.removeTie(state.score, address, pitch));
     },
 
     /** The "-"/"=" hotkeys: steps the active tool's duration, promoting like any other pick */

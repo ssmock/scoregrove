@@ -59,6 +59,7 @@ const flyout = ref<{
   at: { x: number; y: number };
   location: { measure: number; staff: number; voice: number };
   onset: Fraction;
+  pitch: Pitch | null;
 } | null>(null);
 
 /** The real-score address a hit's `staffIndex` corresponds to, through the display projection */
@@ -191,21 +192,27 @@ function place(hit: StaffHit): void {
 }
 
 /**
- * The tie tool's click: the first click on an untied note starts the tie,
- * the second click on another note closes it (or fails and leaves the
- * first one still pending, so a misclick isn't costly). Clicking anything
- * but a plain note is a no-op — chords, rests, and dynamics can't tie.
+ * The tie tool's click: the first click on an untied note or chord tone
+ * starts the tie, the second click on another note or chord closes it (or
+ * fails and leaves the first one still pending, so a misclick isn't
+ * costly). A chord click derives its tone the same way `eraseAt` does, via
+ * `pitchAt`; ignored on the closing side, since the tie's pitch is already
+ * fixed by whichever tone started it. Clicking a rest or dynamic is a no-op.
  */
 function tieClickAt(hit: StaffHit): void {
   const elements =
     projected.value.measures[hit.measureIndex]?.contents[hit.staffIndex]?.voices[0]?.elements;
+  const target = elements?.[hit.elementIndex];
 
-  if (elements?.[hit.elementIndex]?.kind !== 'note') return;
+  if (target?.kind !== 'note' && target?.kind !== 'chord') return;
 
   const address = realAddress(hit);
 
-  if (!store.state.pendingTie) store.startTie(address);
-  else store.closeTie(address);
+  if (!store.state.pendingTie) {
+    store.startTie(address, target.kind === 'chord' ? pitchAt(hit) : undefined);
+  } else {
+    store.closeTie(address);
+  }
 }
 
 function onActivate({ hit }: { hit: StaffHit }): void {
@@ -247,13 +254,15 @@ function onContextmenu({
   const staffIndex = projection.value.staffMap[hit.staffIndex];
   const elements =
     projected.value.measures[hit.measureIndex]?.contents[hit.staffIndex]?.voices[0]?.elements;
+  const target = elements?.[hit.elementIndex];
 
-  if (elements?.[hit.elementIndex]?.kind !== 'note') return;
+  if (target?.kind !== 'note' && target?.kind !== 'chord') return;
 
   flyout.value = {
     at: { x: clientX, y: clientY },
     location: { measure: hit.measureIndex, staff: staffIndex, voice: 0 },
     onset: hit.onset,
+    pitch: target.kind === 'chord' ? pitchAt(hit) : null,
   };
 }
 
@@ -462,6 +471,7 @@ useHotkeys(
       :at="flyout?.at ?? null"
       :location="flyout?.location ?? null"
       :onset="flyout?.onset ?? null"
+      :pitch="flyout?.pitch ?? null"
       @close="flyout = null"
     />
   </div>

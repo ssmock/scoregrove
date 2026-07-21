@@ -273,7 +273,7 @@ describe('createEditorStore ties', () => {
     store.startTie(noteAt(0));
 
     expect(store.state.tieMode).toBe(true);
-    expect(store.state.pendingTie).toEqual(noteAt(0));
+    expect(store.state.pendingTie).toEqual({ address: noteAt(0), pitch: undefined });
 
     store.dispose();
   });
@@ -304,7 +304,7 @@ describe('createEditorStore ties', () => {
     const result = store.closeTie(noteAt(0)); // note 0 comes before, not after, note 1
 
     expect(Result.isError(result)).toBe(true);
-    expect(store.state.pendingTie).toEqual(noteAt(1));
+    expect(store.state.pendingTie).toEqual({ address: noteAt(1), pitch: undefined });
 
     store.dispose();
   });
@@ -333,6 +333,33 @@ describe('createEditorStore ties', () => {
     expect(
       (store.state.score.measures[0].contents[0].voices[0].elements[1] as { kind: string }).kind,
     ).toBe('note');
+
+    store.dispose();
+  });
+
+  it('ties one tone of a chord into a matching plain note, using the pitch passed to startTie', () => {
+    const store = withTwoAdjacentNotes();
+
+    store.place(
+      { measure: 0, staff: 0, voice: 0, onset: Fraction.zero() },
+      { kind: 'note', pitch: b4, duration: Duration.of(NoteValue.Quarter) },
+    );
+
+    store.startTie(noteAt(0), g4);
+    const result = store.closeTie(noteAt(1));
+
+    expect(Result.isOk(result)).toBe(true);
+    expect(store.state.pendingTie).toBeNull();
+
+    const chord = store.state.score.measures[0].contents[0].voices[0].elements[0] as {
+      tones: readonly { pitch: Pitch; tie?: string }[];
+    };
+
+    expect(chord.tones.find((tone) => Pitch.equals(tone.pitch, g4))?.tie).toBe('Begin');
+    expect(chord.tones.find((tone) => Pitch.equals(tone.pitch, b4))?.tie).toBeUndefined();
+    expect(
+      (store.state.score.measures[0].contents[0].voices[0].elements[1] as { tie?: string }).tie,
+    ).toBe('End');
 
     store.dispose();
   });
