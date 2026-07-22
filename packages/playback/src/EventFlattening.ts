@@ -41,6 +41,10 @@ export type EventAddress = {
   element: number;
 };
 
+/** A stable string key for an address — for joining events to per-element data (e.g. velocities). */
+export const addressKey = (address: EventAddress): string =>
+  `${address.measure}:${address.staff}:${address.voice}:${address.element}`;
+
 /** One sounded pitch, positioned in beats (whole notes) from the performance start. */
 export type BeatEvent = {
   startBeat: Fraction;

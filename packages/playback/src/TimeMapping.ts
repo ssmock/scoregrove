@@ -2,7 +2,7 @@ import { Fraction } from '@scoregrove/domain/Fraction';
 import type { Score } from '@scoregrove/domain/Score';
 import type { Tempo } from '@scoregrove/domain/Tempo';
 import type { TimeSignature } from '@scoregrove/domain/TimeSignature';
-import type { BeatEvent, EventAddress } from './EventFlattening';
+import { addressKey, type BeatEvent, type EventAddress } from './EventFlattening';
 import { measureContentLength } from './MeasureTiming';
 import type { PlayStep } from './NavigationUnfolding';
 import { TempoResolution, type ResolvedTempo } from './TempoResolution';
@@ -23,8 +23,8 @@ import { TempoResolution, type ResolvedTempo } from './TempoResolution';
  * does not re-resolve it.
  */
 
-/** Uniform loudness until a dynamics map lands — a placeholder, not the ppp…fff curve (see playback.md). */
-const defaultVelocity = 0.8;
+/** Loudness for an event whose address isn't in the velocities map (or when none is supplied). */
+const fallbackVelocity = 0.7;
 
 /** One measure's span in the performance, in both beats and seconds, at a constant tempo. */
 export type TempoSegment = {
@@ -141,10 +141,15 @@ export const TimeMapping = {
   /**
    * Places beat events onto real time through `map`. A folded (tied) event's
    * end is mapped the same way, so a note spanning measures at different
-   * tempos gets the right total. Velocity is a uniform placeholder until a
-   * dynamics map is built.
+   * tempos gets the right total. `velocities` (keyed by `addressKey`) supplies
+   * each note's loudness from the dynamics resolution; absent, everything
+   * sounds at a uniform fallback.
    */
-  toNoteEvents(beatEvents: readonly BeatEvent[], map: TempoMap): NoteEvent[] {
+  toNoteEvents(
+    beatEvents: readonly BeatEvent[],
+    map: TempoMap,
+    velocities?: ReadonlyMap<string, number>,
+  ): NoteEvent[] {
     return beatEvents.map((event) => {
       const startSeconds = TimeMapping.secondsAt(map, event.startBeat);
       const endSeconds = TimeMapping.secondsAt(
@@ -156,7 +161,7 @@ export const TimeMapping = {
         startSeconds,
         durationSeconds: endSeconds - startSeconds,
         pitchNumber: event.pitchNumber,
-        velocity: defaultVelocity,
+        velocity: velocities?.get(addressKey(event.address)) ?? fallbackVelocity,
         address: event.address,
       };
     });

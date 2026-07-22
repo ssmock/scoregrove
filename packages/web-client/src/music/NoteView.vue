@@ -1,11 +1,12 @@
 <script setup lang="ts">
-import { computed } from 'vue';
+import { computed, inject, ref } from 'vue';
 import type { LaidOutNote } from '@scoregrove/engraving/LayoutTree';
 import { StaffPosition } from '@scoregrove/engraving/StaffPosition';
 import AugmentationDots from './AugmentationDots.vue';
 import GlyphView from './GlyphView.vue';
 import GraceNoteView from './GraceNoteView.vue';
 import LedgerLines from './LedgerLines.vue';
+import { addressKey, playingAddressesKey } from './playbackHighlight';
 import StemView from './StemView.vue';
 
 /**
@@ -16,10 +17,14 @@ import StemView from './StemView.vue';
 const props = defineProps<{ note: LaidOutNote }>();
 
 const y = computed(() => StaffPosition.y(props.note.position));
+
+const playing = inject(playingAddressesKey, ref<ReadonlySet<string>>(new Set()));
+const isPlaying = computed(() => playing.value.has(addressKey(props.note.address)));
 </script>
 
 <template>
   <g
+    :class="{ 'is-playing': isPlaying }"
     :data-measure="props.note.address.measure"
     :data-staff="props.note.address.staff"
     :data-voice="props.note.address.voice"
@@ -65,3 +70,10 @@ const y = computed(() => StaffPosition.y(props.note.position));
     />
   </g>
 </template>
+
+<style scoped>
+/* The sounding note during playback: tint its glyphs (they use currentColor). */
+.is-playing {
+  color: var(--color-accent);
+}
+</style>

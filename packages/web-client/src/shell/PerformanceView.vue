@@ -4,6 +4,7 @@ import AppButton from '../ui/AppButton.vue';
 import { useEditorStore } from '../store/useEditorStore';
 import ScoreDisplay from './ScoreDisplay.vue';
 import StaffDialog from './StaffDialog.vue';
+import TransportBar from './TransportBar.vue';
 
 /**
  * Full-bleed, read-only score. Always vertical flow regardless of the
@@ -22,12 +23,13 @@ function print(): void {
 
 <template>
   <div class="performance-view">
-    <ScoreDisplay
-      class="performance-view__stage"
-      :score="store.state.score"
-      flow="vertical"
-      :hidden-staves="store.state.hiddenStaves"
-    />
+    <div class="performance-view__stage">
+      <ScoreDisplay
+        :score="store.state.score"
+        flow="vertical"
+        :hidden-staves="store.state.hiddenStaves"
+      />
+    </div>
 
     <div class="performance-view__corner">
       <div class="performance-view__menu">
@@ -35,6 +37,10 @@ function print(): void {
         <AppButton @click="staffDialogOpen = true">Staff</AppButton>
         <AppButton @click="store.setView('editor')">Edit</AppButton>
       </div>
+    </div>
+
+    <div class="performance-view__transport">
+      <TransportBar />
     </div>
 
     <StaffDialog :open="staffDialogOpen" @close="staffDialogOpen = false" />
@@ -48,13 +54,16 @@ function print(): void {
   overflow: auto;
 }
 
+/* An auto-height wrapper (not the height:100% ScoreDisplay root) so the score
+   flows at content height and the extra bottom padding becomes real scroll
+   room — letting the last system clear the fixed transport bar. */
 .performance-view__stage {
   /* No page-size preference is stored yet, so this guesses US Letter (8.5in
      wide) as the on-screen stand-in for "a page" — printing itself isn't
      bound by this, see print.css. */
   max-width: 8.5in;
   margin: 0 auto;
-  padding: var(--space-5);
+  padding: var(--space-5) var(--space-5) 6rem;
 }
 
 .performance-view__corner {
@@ -62,6 +71,20 @@ function print(): void {
   bottom: 0;
   left: 0;
   padding: var(--space-4);
+}
+
+/* A persistent transport pinned bottom-center, clear of the corner menu */
+.performance-view__transport {
+  position: fixed;
+  bottom: var(--space-4);
+  left: 50%;
+  transform: translateX(-50%);
+  width: min(32rem, calc(100% - 12rem));
+  padding: var(--space-2) var(--space-3);
+  background: var(--color-surface-raised);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md, 8px);
+  box-shadow: var(--shadow-md);
 }
 
 .performance-view__menu {

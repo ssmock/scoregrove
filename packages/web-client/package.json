@@ -17,6 +17,7 @@
     "@scoregrove/domain": "workspace:*",
     "@scoregrove/editing": "workspace:*",
     "@scoregrove/engraving": "workspace:*",
+    "@scoregrove/playback": "workspace:*",
     "vue": "^3.5.40"
   },
   "devDependencies": {

@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed } from 'vue';
+import { computed, inject, ref } from 'vue';
 import { Glyphs } from '@scoregrove/engraving/Glyphs';
 import type { LaidOutChord } from '@scoregrove/engraving/LayoutTree';
 import { StaffPosition } from '@scoregrove/engraving/StaffPosition';
@@ -7,6 +7,7 @@ import AugmentationDots from './AugmentationDots.vue';
 import GlyphView from './GlyphView.vue';
 import GraceNoteView from './GraceNoteView.vue';
 import LedgerLines from './LedgerLines.vue';
+import { addressKey, playingAddressesKey } from './playbackHighlight';
 import StemView from './StemView.vue';
 
 /**
@@ -22,10 +23,14 @@ const clusterLeft = computed(() => Math.min(...props.chord.tones.map((tone) => t
 const clusterWidth = computed(
   () => Math.max(...props.chord.tones.map((tone) => tone.x)) + headWidth.value - clusterLeft.value,
 );
+
+const playing = inject(playingAddressesKey, ref<ReadonlySet<string>>(new Set()));
+const isPlaying = computed(() => playing.value.has(addressKey(props.chord.address)));
 </script>
 
 <template>
   <g
+    :class="{ 'is-playing': isPlaying }"
     :data-measure="props.chord.address.measure"
     :data-staff="props.chord.address.staff"
     :data-voice="props.chord.address.voice"
@@ -74,3 +79,10 @@ const clusterWidth = computed(
     />
   </g>
 </template>
+
+<style scoped>
+/* The sounding chord during playback: tint its glyphs (they use currentColor). */
+.is-playing {
+  color: var(--color-accent);
+}
+</style>

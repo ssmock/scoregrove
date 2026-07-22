@@ -127,6 +127,9 @@ importers:
       '@scoregrove/engraving':
         specifier: workspace:*
         version: link:../engraving
+      '@scoregrove/playback':
+        specifier: workspace:*
+        version: link:../playback
       vue:
         specifier: ^3.5.40
         version: 3.5.40(typescript@7.0.2)

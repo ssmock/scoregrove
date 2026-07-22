@@ -19,6 +19,12 @@ import { StaffOps } from '@scoregrove/editing/StaffOps';
 import { TimeSignatureOps } from '@scoregrove/editing/TimeSignatureOps';
 import { UndoStack } from '@scoregrove/editing/UndoStack';
 import type { ScoreAddress } from '@scoregrove/engraving/LayoutTree';
+import { Compiler, type Performance } from '@scoregrove/playback/Compiler';
+import {
+  createBrowserTransport,
+  type Transport,
+  type TransportStatus,
+} from '../playback/Transport';
 import { Projects } from './Projects';
 
 /**
@@ -112,6 +118,30 @@ type EditorState = {
    */
   pendingTie: { address: ScoreAddress; pitch?: Pitch } | null;
   recents: readonly ToolConfig[];
+  /**
+   * Audio playback of the current score. Presentation state, not score
+   * content — it never touches the undo stack. `status` mirrors the
+   * transport; `positionSeconds`/`durationSeconds` drive the transport bar's
+   * readout and scrubber.
+   */
+  playback: {
+    status: TransportStatus;
+    positionSeconds: number;
+    durationSeconds: number;
+    loop: boolean;
+    /** Addresses of the notes/chords sounding right now, for the on-staff playhead highlight */
+    sounding: readonly ScoreAddress[];
+  };
+};
+
+/**
+ * How the store obtains a transport — injected so tests can supply a fake
+ * (the default builds a real Web Audio one, which needs a browser
+ * `AudioContext`). Created lazily on the first play, so no audio context
+ * exists until the user asks for sound (also the browser's autoplay rule).
+ */
+export type EditorStoreDeps = {
+  createTransport?: (onPosition: (seconds: number) => void) => Transport;
 };
 
 export type EditorStore = ReturnType<typeof createEditorStore>;
@@ -128,7 +158,7 @@ export type EditorStore = ReturnType<typeof createEditorStore>;
  * and pallet state (active tool, recents) do not — undoing "you scrolled"
  * would be a strange experience.
  */
-export function createEditorStore(initial: Score = blankScore()) {
+export function createEditorStore(initial: Score = blankScore(), deps: EditorStoreDeps = {}) {
   const state = reactive<EditorState>({
     projectName: undefined,
     score: initial,
@@ -141,7 +171,60 @@ export function createEditorStore(initial: Score = blankScore()) {
     tieMode: false,
     pendingTie: null,
     recents: [],
+    playback: {
+      status: 'stopped',
+      positionSeconds: 0,
+      durationSeconds: 0,
+      loop: false,
+      sounding: [],
+    },
   });
+
+  const makeTransport =
+    deps.createTransport ??
+    ((onPosition) => createBrowserTransport(new AudioContext(), { onPosition }));
+
+  let transport: Transport | null = null;
+  let performance: Performance | null = null;
+
+  /** The notes/chords sounding at `seconds` — events already begun and not yet ended. */
+  const soundingAt = (seconds: number): ScoreAddress[] => {
+    if (!performance) return [];
+
+    const result: ScoreAddress[] = [];
+
+    for (const event of performance.events) {
+      if (event.startSeconds > seconds) break; // events are sorted by start
+      if (seconds < event.startSeconds + event.durationSeconds) result.push(event.address);
+    }
+
+    return result;
+  };
+
+  /** Builds the transport (and its audio context) on first use, per the autoplay policy */
+  const ensureTransport = (): Transport => {
+    if (!transport) {
+      transport = makeTransport((seconds) => {
+        const status = transport?.status() ?? 'stopped';
+
+        state.playback.status = status;
+        state.playback.positionSeconds = seconds;
+        state.playback.sounding = status === 'stopped' ? [] : soundingAt(seconds);
+      });
+    }
+
+    return transport;
+  };
+
+  const syncPlayback = (): void => {
+    if (!transport) return;
+
+    state.playback.status = transport.status();
+    state.playback.positionSeconds = transport.positionSeconds();
+    state.playback.durationSeconds = transport.durationSeconds();
+    state.playback.sounding =
+      state.playback.status === 'stopped' ? [] : soundingAt(state.playback.positionSeconds);
+  };
 
   let autosaveTimer: ReturnType<typeof setTimeout> | undefined;
 
@@ -167,6 +250,18 @@ export function createEditorStore(initial: Score = blankScore()) {
 
         if (state.projectName) Projects.save(state.projectName, state.score);
       }, autosaveDelayMs);
+    },
+  );
+
+  // Editing invalidates any compiled performance, so playback halts on any
+  // score change rather than sounding a stale timeline.
+  const stopPlaybackWatch = watch(
+    () => state.score,
+    () => {
+      if (transport && state.playback.status !== 'stopped') {
+        transport.stop();
+        syncPlayback();
+      }
     },
   );
 
@@ -460,10 +555,58 @@ export function createEditorStore(initial: Score = blankScore()) {
       if (state.projectName === name) state.projectName = undefined;
     },
 
-    /** Stops the autosave watcher — call when the store is no longer needed */
+    /**
+     * Play/pause toggle. From stopped, compiles the current score and plays
+     * from the start (refusing an invalid score — no sound from a broken
+     * one); from paused, resumes; while playing, pauses. Building the
+     * transport here (on a user gesture) is what unlocks audio.
+     */
+    togglePlayback(): Result<void> {
+      const t = ensureTransport();
+
+      if (state.playback.status === 'playing') {
+        t.pause();
+      } else if (state.playback.status === 'paused') {
+        t.play();
+      } else {
+        const compiled = Compiler.compile(state.score);
+
+        if (!Result.isOk(compiled)) return Result.mapError(compiled);
+
+        performance = compiled.value;
+        t.load(compiled.value);
+        t.play();
+      }
+
+      syncPlayback();
+
+      return Result.okNoValue();
+    },
+
+    stopPlayback(): void {
+      transport?.stop();
+      syncPlayback();
+    },
+
+    /** Moves the playhead (seconds); recompiles first if stopped so the target lands on the current score */
+    seekPlayback(seconds: number): void {
+      if (!transport) return;
+
+      transport.seek(seconds);
+      syncPlayback();
+    },
+
+    setPlaybackLoop(loop: boolean): void {
+      state.playback.loop = loop;
+      transport?.setLoop(loop);
+    },
+
+    /** Stops the autosave watcher and tears down audio — call when the store is no longer needed */
     dispose(): void {
       flushAutosave();
       stopAutosaveWatch();
+      stopPlaybackWatch();
+      transport?.dispose();
     },
   };
 }

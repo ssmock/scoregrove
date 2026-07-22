@@ -1,5 +1,6 @@
 import { Result } from '@scoregrove/domain/Result';
 import { Score } from '@scoregrove/domain/Score';
+import { Dynamics } from './Dynamics';
 import { EventFlattening } from './EventFlattening';
 import { NavigationUnfolding } from './NavigationUnfolding';
 import { TimeMapping, type NoteEvent } from './TimeMapping';
@@ -30,7 +31,8 @@ export const Compiler = {
     const playOrder = NavigationUnfolding.unfold(score);
     const beatEvents = EventFlattening.flatten(score, playOrder);
     const tempoMap = TimeMapping.build(score, playOrder);
-    const events = TimeMapping.toNoteEvents(beatEvents, tempoMap);
+    const velocities = Dynamics.velocities(score);
+    const events = TimeMapping.toNoteEvents(beatEvents, tempoMap, velocities);
 
     return Result.ok({ events, durationSeconds: tempoMap.durationSeconds });
   },

@@ -4,7 +4,8 @@ import { Clef } from '@scoregrove/domain/Clef';
 import { Duration, NoteValue } from '@scoregrove/domain/Duration';
 import { Mode } from '@scoregrove/domain/KeySignature';
 import { StaffContent, type Measure } from '@scoregrove/domain/Measure';
-import { Note, type MeasureElement } from '@scoregrove/domain/MeasureElement';
+import { DynamicMark } from '@scoregrove/domain/Dynamic';
+import { DynamicElement, Note, type MeasureElement } from '@scoregrove/domain/MeasureElement';
 import { NonEmptyArray } from '@scoregrove/domain/NonEmptyArray';
 import { Octave, Pitch, PitchClass, PitchLetter } from '@scoregrove/domain/Pitch';
 import { PositiveInteger } from '@scoregrove/domain/PositiveInteger';
@@ -83,6 +84,26 @@ describe('Compiler.compile', () => {
     expect(performance.events.map((e) => e.pitchNumber)).toEqual([60, 62, 60, 62]);
     expect(performance.events.map((e) => e.startSeconds)).toEqual([0, 2, 4, 6]);
     expect(performance.durationSeconds).toBeCloseTo(8, 9);
+  });
+
+  it('carries dynamics through to event velocities', () => {
+    // p C | f D — the forte note should be louder than the piano one
+    const score = scoreOf(
+      [
+        measureOf([
+          DynamicElement.of(DynamicMark.Piano),
+          note(PitchLetter.C, 4, quarter),
+          DynamicElement.of(DynamicMark.Forte),
+          note(PitchLetter.D, 4, quarter),
+        ]),
+      ],
+      { tempo: mm120 },
+    );
+
+    const performance = expectOk(Compiler.compile(score));
+
+    expect(performance.events.map((e) => e.pitchNumber)).toEqual([60, 62]);
+    expect(performance.events[0].velocity).toBeLessThan(performance.events[1].velocity);
   });
 
   it('refuses an invalid score rather than sounding it', () => {

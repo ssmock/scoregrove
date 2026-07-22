@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, ref } from 'vue';
+import { computed, provide, ref } from 'vue';
 import { Fraction } from '@scoregrove/domain/Fraction';
 import { NonEmptyArray } from '@scoregrove/domain/NonEmptyArray';
 import type { Pitch } from '@scoregrove/domain/Pitch';
@@ -12,6 +12,7 @@ import type { ScoreAddress } from '@scoregrove/engraving/LayoutTree';
 import { StaffPosition } from '@scoregrove/engraving/StaffPosition';
 import { SystemLayout } from '@scoregrove/engraving/SystemLayout';
 import GlyphView from '../music/GlyphView.vue';
+import { addressKey, playingAddressesKey } from '../music/playbackHighlight';
 import ScoreView, { type HoverPoint } from '../music/ScoreView.vue';
 import SystemView from '../music/SystemView.vue';
 import { canvasTextMeasurer } from '../music/textMeasure';
@@ -49,6 +50,29 @@ const measureText = canvasTextMeasurer();
 
 const projection = computed(() => DisplayProjection.project(props.score, props.hiddenStaves));
 const projected = computed(() => projection.value.score);
+
+/**
+ * The sounding notes/chords, in the *display* coordinates the renderer lays
+ * out: the store reports real-score addresses, so each is mapped to its
+ * display staff (dropped if that staff is hidden). Provided down to the
+ * note/chord views, which tint themselves when their address is in the set.
+ */
+const playingAddresses = computed(() => {
+  const staffMap = projection.value.staffMap;
+  const keys = new Set<string>();
+
+  for (const address of store.state.playback.sounding) {
+    const displayStaff = staffMap.indexOf(address.staff);
+
+    if (displayStaff === -1) continue;
+
+    keys.add(addressKey({ ...address, staff: displayStaff }));
+  }
+
+  return keys;
+});
+
+provide(playingAddressesKey, playingAddresses);
 
 const unbrokenSystem = computed(() =>
   props.flow === 'horizontal' ? SystemLayout.unbroken(projected.value, { measureText }) : null,

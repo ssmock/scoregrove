@@ -187,14 +187,14 @@ These are the crux. The domain stores _names_; playback must assign _numbers_. E
   irregular meters (5/8, 7/8) fall to simple. An exact `MetronomeMark` ignores all this and uses
   its own carried beat. The effective time signature is taken per measure from `ContextWalk`, so
   a mid-piece meter change re-picks the pulse.
-- **Dynamic mark → velocity/gain.** `DynamicMark` ppp…fff → a 0–1 loudness curve
-  (e.g. ppp ≈ 0.12 … mf ≈ 0.5 … fff ≈ 1.0). Accent dynamics need behavior, not just a level:
-  **sforzando** = a sharp velocity spike on its one note; **fortepiano** = loud attack then
-  immediate drop. **⚠ REVIEW** the curve and the accent semantics.
-- **Crescendo/diminuendo target.** A `DynamicChange` "runs until the next dynamic indication" —
-  playback ramps velocity from the prevailing level to _the next mark's_ level across that span.
-  If no mark follows, the target is undefined. **⚠ REVIEW:** proposed default = ramp one dynamic
-  step (e.g. mf→f) when unterminated.
+- **Dynamic mark → velocity/gain — ✅ DONE (`Dynamics`).** `DynamicMark` ppp…fff → a 0–1 curve
+  (ppp 0.12 … mf 0.56 … fff 1.0), a mark carrying forward until the next; **sforzando** accents
+  its one following note; **fortepiano** hits loud then drops to piano. Curve centralized and
+  retunable.
+- **Crescendo/diminuendo target — deferred.** For now a `DynamicChange` is not a gradual ramp —
+  the level simply steps to the next mark when it arrives (a documented v1 simplification). A
+  true ramp (interpolating from the prevailing level to the next mark's across the span) is the
+  natural next refinement; the unterminated-ramp default is still open.
 - **Swing → timing ratio.** `Swing` (Light/Medium/Hard/Shuffle) lengthens the first of each
   subdivision pair. Medium = the classic 2:1 triplet feel; others graded around it. **⚠ REVIEW:**
   the ratios, and _which_ subdivision swings (eighths under a quarter beat — needs a rule tied to
@@ -337,35 +337,70 @@ in `packages/playback`; driver/UI in `web-client`.
       `Performance` (`{ events, durationSeconds }`). 3 end-to-end tests (a C-E-G-C bar at ♩=120 →
       pitches `[60,64,67,72]` at seconds `[0,0.5,1,1.5]`; a repeat sounding twice; an invalid
       score refused)
-- [ ] `PerformanceContext` / `DynamicsMap` — resolving dynamic level (and swing) per measure and
-      the global crescendo/diminuendo interpolation, feeding real velocities into
-      `toNoteEvents` in place of the current placeholder. Needs the still-unsigned dynamics table
-      (item 6). (Tempo resolution already lives in `TimeMapping`.)
+- [x] `Dynamics` — resolves the written dynamics into a velocity per sounded element (keyed by
+      `addressKey`), fed through `toNoteEvents` into the `Performance` (replacing the uniform
+      placeholder). A mark sets the level and carries it forward; **sforzando** accents only its
+      one following note; **fortepiano** hits loud then drops to piano. Velocity curve
+      (ppp 0.12 … mf 0.56 … fff 1.0) is a centralized, retunable starting point. Deliberate v1
+      simplifications, flagged in code: a crescendo/diminuendo is not yet a gradual ramp (the
+      level steps to the next mark when it arrives), and a dynamic applies to its own voice only,
+      not the whole staff. 6 tests (incl. p→f contrast end-to-end through the compiler). Swing
+      still deferred. (Tempo resolution already lives in `TimeMapping`.)
 - [ ] Remaining mapping tables — dynamic→velocity / swing→ratio / articulation numbers,
       alongside the tempo table in `TempoResolution`, in one place and easy to retune (mirrors
       engraving's Bravura-metadata centralization). The tempo table is done
 
 ### Driver + transport (`web-client`)
 
-- [ ] `Instrument` interface + `OscillatorInstrument` (ADSR synth)
-- [ ] `Scheduler` — look-ahead selection (pure core) + injected clock/output
-- [ ] `Transport` — owns `AudioContext`, play/pause/stop/seek/loop, position from the audio
-      clock, `dispose()`
-- [ ] Store slice — transport state, recompile-on-edit, mode exclusivity, playback prefs
-- [ ] Highlight-sync — sounding `ScoreAddress` → existing display overlay; auto-scroll
+- [x] `Instrument` interface + `OscillatorInstrument` — the v1 sound source (review item 2
+      resolved: **sine** oscillator, midrange, per-voice ADSR gain into a headroomed master).
+      Tested against a mock audio graph (sine timbre, envelope shape, connections, `stopAll`).
+- [x] `Transport` — the look-ahead scheduler and play/pause/stop/seek/loop, position read from
+      the injected audio clock. Fully injection-driven (clock, timer, instrument, `resume`,
+      `frequencyOf`) so its scheduling is unit-tested with a fake clock + recording instrument —
+      no real `AudioContext` (13 tests: window scheduling, sample-accurate start times,
+      pause/resume, seek, stop, natural end, loop). `createBrowserTransport(context)` is the thin
+      real-Web-Audio wiring (25 ms `setInterval`, oscillator synth). The pure look-ahead
+      selection lives inside `tick()`, exercised directly by those tests.
+- [x] Store slice — a `playback` slice on `editorStore` (`status`/`position`/`duration`/`loop`)
+      plus `togglePlayback`/`stopPlayback`/`seekPlayback`/`setPlaybackLoop`. The transport (and
+      its `AudioContext`) is built lazily on the first play, via an injected `createTransport`
+      dep so tests use a fake — no audio at store construction, per the autoplay rule.
+      `togglePlayback` compiles the current score on a fresh start (refusing an invalid one),
+      resumes from paused otherwise; any score edit stops playback (watch), so no stale timeline
+      sounds. `dispose` tears the transport down. 6 tests. (Click-to-seek mode exclusivity waits
+      with highlight-sync below.)
+- [x] Highlight-sync — the store derives which addresses are sounding (events begun and not yet
+      ended at the current position) into `playback.sounding`; `ScoreDisplay` maps those from
+      real- to display-staff coordinates and `provide`s a reactive key set that `NoteView`/
+      `ChordView` inject, tinting the playing glyph with the accent color (glyphs use
+      `currentColor`, so a class on the element's `<g>` is enough). No prop-drilling, no layout
+      search — the leaves already carry their address. Verified the tint renders through the
+      inject via a headless-Chromium probe. (Auto-scroll to keep the playhead in view is still
+      pending.)
 
 ### UI
 
-- [ ] TransportBar (performance corner menu + editor sidebar)
+- [x] TransportBar — play/pause, stop, a seek scrubber with an m:ss readout, and a loop toggle;
+      reads the store's `playback` slice and dispatches intents, owns no audio. Placed in the
+      performance view (a pinned bottom-center card) and the editor sidebar. Verified rendering
+      in all three story contexts via headless Chromium (no runtime errors, since `.vue` isn't
+      type-checked).
 - [ ] Playhead/highlight overlay + click-to-seek
 - [ ] Tempo/scale control; (optional) count-in/metronome toggle
 
 ### Demo / tests
 
-- [ ] Piano-roll "inspect the Performance" story (no audio; visual regression on pure output)
+- [x] Piano-roll "inspect the Performance" story (`PianoRoll.vue`, `Playback/PianoRoll`) — draws a
+      compiled `Performance` silently as time×pitch bars with velocity-opacity, one story per
+      fixture. The end-to-end regression surface: the melody shows the tie as one long bar and
+      p→f as opacity; the repeats/navigation fixture shows the D.S. al Fine play order
+      (`[0,1,0,2,3,0,2]`) recurring along the timeline; the two-staff fixture spans both staves'
+      range. Verified by headless-Chromium render.
 - [ ] Playback demo wiring the transport to each fixture with live highlight
-- [ ] Vitest suites: unfolding (repeats/voltas/D.C.), tempo/dynamics maps, tie folding, grace
-      stealing, scheduler look-ahead with a fake clock
+- [x] Vitest suites: unfolding (repeats/voltas/D.C.), tempo & dynamics maps, tie folding,
+      scheduler look-ahead with a fake clock — all present (playback: 50, web-client driver: 13).
+      Grace stealing is still unbuilt (no events for graces yet).
 
 ---
 
@@ -379,7 +414,9 @@ gap list.
   domain has no unpitched notation anyway — same gap engraving notes).
 - No micro-timing/humanization; onsets are mathematically exact (swing is the only deliberate
   offset).
-- Fermata/grace/articulation numbers are uniform constants, not context-sensitive.
+- Dynamics: crescendo/diminuendo steps rather than ramps (see A), a dynamic affects only its own
+  voice (not the staff), and articulation/fermata/grace shaping of velocity/duration is not
+  applied yet. Absolute marks, sforzando, and fortepiano do sound.
 - No repeats of _dynamics/tempo state_ subtleties across a D.C. (state is resolved along the
   unfolded order; edge cases in al Coda + volta interaction need test coverage — flag, don't
   assume).
@@ -445,9 +482,9 @@ work; the first three are the load-bearing forks.
    of `Tempo` in `packages/domain` (`{ noteValue; dots?; bpm }`), wired through `ContextWalk` and
    engraving (prose text for now). A composer can pin an exact tempo at the start or any
    mid-piece change; playback reads `bpm` directly.
-2. **Sound source for v1 (Strategy 4 / B)** — ship the zero-asset oscillator synth first
-   (recommended), or invest up front in a bundled sampled/SoundFont instrument (the Bravura-scale
-   dependency decision, with asset-size and licensing implications)?
+2. ~~**Sound source for v1 (Strategy 4 / B)**~~ — ✅ **DONE.** The zero-asset **sine** oscillator
+   synth (`OscillatorInstrument`, midrange, ADSR), behind the `Instrument` seam so a sampled/
+   SoundFont instrument can replace it later.
 3. **Accel./rit. in v1? (A)** — defer entirely (constant tempo, flagged) as recommended, or
    model ramps now despite the domain giving no ramp end/target?
 4. ~~**Hoist key-aware pitch→semitone into `domain` (A)**~~ — ✅ **DONE.** `Semitone` (and the
@@ -455,12 +492,13 @@ work; the first three are the load-bearing forks.
    `PitchStepping` and playback's `PitchSounding` both consume it. No dependency arrow inverted.
 5. ~~**BPM beat unit (A)**~~ — ✅ **DONE.** Decided: the compound-aware metric pulse
    (`TempoResolution.metricBeat`), plus **default tempo = Moderato** for an untempo'd score.
-6. **The remaining mapping tables (A)** — `TempoMarking`→BPM is ✅ done (`TempoResolution`). Still
-   open: `DynamicMark`→velocity (and sfz/fp/accent behavior), `Swing`→ratios (and which
-   subdivision swings), articulation duration/velocity factors, fermata factor, grace-note
-   stealing rule. Proposed starting values are in §A; none of _these_ are settled.
-7. **Crescendo/diminuendo with no following mark (A)** — ramp one dynamic step (proposed) or
-   hold flat?
+6. **The remaining mapping tables (A)** — `TempoMarking`→BPM ✅ (`TempoResolution`) and
+   `DynamicMark`→velocity ✅ (`Dynamics`, with sfz/fp accent behavior) are done, as retunable
+   default tables. Still open: `Swing`→ratios (and which subdivision swings), articulation
+   duration/velocity factors, fermata factor, grace-note stealing rule. Proposed starting values
+   for those are in §A; none are settled.
+7. **Crescendo/diminuendo (A)** — the gradual ramp is deferred (level steps to the next mark for
+   now); when built, decide the unterminated-ramp default (ramp one dynamic step vs. hold flat).
 8. **Highlight & seek UX (C)** — cursor line vs. note wash; is click-to-seek / play-from-here in
    v1? Auto-scroll behavior in each flow.
 9. **Playback prefs persistence (C)** — persist per-project tempo scale / (future) instrument

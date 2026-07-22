@@ -4,6 +4,7 @@ import SidebarSection from '../ui/SidebarSection.vue';
 import { useEditorStore } from '../store/useEditorStore';
 import EditorPallet from './EditorPallet.vue';
 import ProjectManager from './ProjectManager.vue';
+import TransportBar from './TransportBar.vue';
 
 /**
  * The editor's left sidebar: view switching (top), the pallet (middle),
@@ -20,6 +21,10 @@ const store = useEditorStore();
     </SidebarSection>
 
     <EditorPallet class="sidebar__pallet" />
+
+    <SidebarSection heading="Playback">
+      <TransportBar />
+    </SidebarSection>
 
     <ProjectManager />
   </aside>
