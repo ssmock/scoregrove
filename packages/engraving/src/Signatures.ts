@@ -1,5 +1,5 @@
 import { Clef } from '@scoregrove/domain/Clef';
-import type { KeySignature } from '@scoregrove/domain/KeySignature';
+import { KeySignature } from '@scoregrove/domain/KeySignature';
 import { BeatUnit, TimeSymbol, type TimeSignature } from '@scoregrove/domain/TimeSignature';
 import type { GlyphName } from './Bravura';
 import { Glyphs } from './Glyphs';
@@ -66,7 +66,7 @@ export const Signatures = {
    * An empty run for C major / A minor.
    */
   key(clef: Clef, key: KeySignature): GlyphRun {
-    const accidentals = KeySignatureLayout.accidentals(key);
+    const accidentals = KeySignature.accidentals(key);
 
     if (!accidentals) return { glyphs: [], width: 0 };
 

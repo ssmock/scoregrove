@@ -1,13 +1,7 @@
 import { Clef } from '@scoregrove/domain/Clef';
 import { KeySignature } from '@scoregrove/domain/KeySignature';
-import { Accidental, PitchClass, type PitchLetter } from '@scoregrove/domain/Pitch';
+import { Accidental } from '@scoregrove/domain/Pitch';
 import type { StaffPosition } from './StaffPosition';
-
-/**
- * The order in which sharps and flats accumulate in a key signature.
- */
-const sharpOrder: readonly PitchLetter[] = ['F', 'C', 'G', 'D', 'A', 'E', 'B'];
-const flatOrder: readonly PitchLetter[] = ['B', 'E', 'A', 'D', 'G', 'C', 'F'];
 
 /**
  * The standard staff positions of each printed sharp and flat on the treble
@@ -23,42 +17,15 @@ const clefShift: Record<Clef, number> = {
   Alto: -1,
 };
 
-/**
- * The accidentals a key signature carries: which symbol, and which letters it
- * alters, in printed order.
- */
-export type KeyAccidentals = {
-  accidental: Accidental;
-  letters: readonly PitchLetter[];
-};
-
 export const KeySignatureLayout = {
   /**
-   * Which letters the key signature alters and with which symbol; undefined
-   * for the empty signature (C major / A minor). Derived from the tonic's
-   * place in the domain's circle-of-fifths ordering: index 0 is empty, 1–7
-   * are sharp counts, 8–14 are flat counts.
-   */
-  accidentals(key: KeySignature): KeyAccidentals | undefined {
-    const index = KeySignature.standardTonics(key.mode).findIndex((tonic) =>
-      PitchClass.equals(tonic, key.tonic),
-    );
-
-    if (index <= 0) return undefined;
-
-    if (index <= 7) {
-      return { accidental: Accidental.Sharp, letters: sharpOrder.slice(0, index) };
-    }
-
-    return { accidental: Accidental.Flat, letters: flatOrder.slice(0, index - 7) };
-  },
-
-  /**
    * The staff positions of the printed accidentals, left to right, following
-   * the standard pattern for the clef. Empty for the empty signature.
+   * the standard pattern for the clef. Empty for the empty signature. Which
+   * letters are altered (and with which symbol) is key theory, resolved by
+   * `KeySignature.accidentals`; this only decides where they sit.
    */
   positions(clef: Clef, key: KeySignature): StaffPosition[] {
-    const accidentals = KeySignatureLayout.accidentals(key);
+    const accidentals = KeySignature.accidentals(key);
 
     if (!accidentals) return [];
 

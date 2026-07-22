@@ -1,7 +1,7 @@
-import type { KeySignature } from '@scoregrove/domain/KeySignature';
+import { KeySignature } from '@scoregrove/domain/KeySignature';
 import { Accidental, Octave, Pitch, PitchClass, PitchLetter } from '@scoregrove/domain/Pitch';
 import { Result } from '@scoregrove/domain/Result';
-import { KeySignatureLayout } from '@scoregrove/engraving/KeySignatureLayout';
+import { Semitone } from '@scoregrove/domain/Semitone';
 
 /** Score order of the seven letters, used to search for a spelling deterministically */
 const letterOrder: readonly PitchLetter[] = [
@@ -14,67 +14,18 @@ const letterOrder: readonly PitchLetter[] = [
   PitchLetter.B,
 ];
 
-/** Each letter's semitone within its own octave, before any accidental */
-const baseSemitones: Record<PitchLetter, number> = {
-  C: 0,
-  D: 2,
-  E: 4,
-  F: 5,
-  G: 7,
-  A: 9,
-  B: 11,
-};
-
-const accidentalOffsets: Record<Accidental, number> = {
-  DoubleFlat: -2,
-  Flat: -1,
-  Natural: 0,
-  Sharp: 1,
-  DoubleSharp: 2,
-};
-
 const mod12 = (n: number): number => ((n % 12) + 12) % 12;
-
-/** Which accidental, if any, the key signature implies for each letter */
-const keyAccidentalsOf = (key: KeySignature): Partial<Record<PitchLetter, Accidental>> => {
-  const accidentals = KeySignatureLayout.accidentals(key);
-
-  if (!accidentals) return {};
-
-  const map: Partial<Record<PitchLetter, Accidental>> = {};
-
-  for (const letter of accidentals.letters) map[letter] = accidentals.accidental;
-
-  return map;
-};
-
-/**
- * A pitch class's semitone *as it actually sounds under `key`*: an explicit
- * accidental (including an explicit Natural, which cancels the key) always
- * wins; an omitted one defers to whatever the key signature implies for
- * that letter, per the domain's own convention ("an absent accidental means
- * the letter is played as the key signature dictates"). Getting this wrong
- * is exactly how a bare "F" in a key that implies F♯ would silently be
- * treated as F-natural instead of the F♯ it actually sounds like.
- */
-const effectiveSemitone = (pitchClass: PitchClass, key: KeySignature): number => {
-  const implied = pitchClass.accidental ?? keyAccidentalsOf(key)[pitchClass.letter];
-
-  return baseSemitones[pitchClass.letter] + (implied ? accidentalOffsets[implied] : 0);
-};
 
 export type StepDirection = 'Up' | 'Down';
 
 export const PitchStepping = {
   /**
-   * The absolute semitone number of a written pitch *as it sounds under
-   * `key`* (see `effectiveSemitone` — the key matters whenever the pitch
-   * omits its own accidental). Only differences between two calls are
-   * meaningful; this is purely an intermediate for stepping arithmetic, not
-   * a performance-parameter mapping.
+   * The absolute semitone number of a written pitch as it sounds under `key`
+   * — the domain's `Semitone.ofPitch`, re-exposed here for the stepping
+   * arithmetic below. Only differences between two calls are meaningful.
    */
   chromaticIndex(pitch: Pitch, key: KeySignature): number {
-    return pitch.octave * 12 + effectiveSemitone(pitch.pitchClass, key);
+    return Semitone.ofPitch(pitch, key);
   },
 
   /**
@@ -92,19 +43,18 @@ export const PitchStepping = {
    */
   spellPitchClass(pitchClass: number, key: KeySignature, direction: StepDirection): PitchClass {
     const target = mod12(pitchClass);
-    const keyAccidentals = keyAccidentalsOf(key);
 
     for (const letter of letterOrder) {
-      const altered = keyAccidentals[letter];
+      const altered = KeySignature.impliedAccidental(key, letter);
 
-      if (altered && mod12(baseSemitones[letter] + accidentalOffsets[altered]) === target) {
+      if (altered && mod12(Semitone.ofLetter(letter) + Semitone.ofAccidental(altered)) === target) {
         return PitchClass.of(letter);
       }
     }
 
     for (const letter of letterOrder) {
-      if (baseSemitones[letter] === target) {
-        return keyAccidentals[letter]
+      if (Semitone.ofLetter(letter) === target) {
+        return KeySignature.impliedAccidental(key, letter)
           ? PitchClass.of(letter, Accidental.Natural)
           : PitchClass.of(letter);
       }
@@ -112,7 +62,7 @@ export const PitchStepping = {
 
     const offset = direction === 'Up' ? 1 : -1;
     const accidental = direction === 'Up' ? Accidental.Sharp : Accidental.Flat;
-    const letter = letterOrder.find((l) => mod12(baseSemitones[l] + offset) === target);
+    const letter = letterOrder.find((l) => mod12(Semitone.ofLetter(l) + offset) === target);
 
     if (!letter) {
       // Every pitch class matches either a natural letter or one of these
@@ -137,9 +87,9 @@ export const PitchStepping = {
     const direction: StepDirection = semitones > 0 ? 'Up' : 'Down';
     const pitchClass = PitchStepping.spellPitchClass(target, key, direction);
 
-    // effectiveSemitone(pitchClass, key) ≡ target (mod 12) by construction
+    // Semitone.effective(pitchClass, key) ≡ target (mod 12) by construction
     // of spellPitchClass, so this division is always exact
-    const octave = (target - effectiveSemitone(pitchClass, key)) / 12;
+    const octave = (target - Semitone.effective(pitchClass, key)) / 12;
 
     if (!Octave.is(octave)) {
       return Result.invalid('Stepping that far falls outside the representable octave range');

@@ -1,7 +1,6 @@
-import type { KeySignature } from '@scoregrove/domain/KeySignature';
+import { KeySignature } from '@scoregrove/domain/KeySignature';
 import type { MeasureElement } from '@scoregrove/domain/MeasureElement';
 import { Accidental, type Pitch } from '@scoregrove/domain/Pitch';
-import { KeySignatureLayout } from './KeySignatureLayout';
 
 /**
  * For identity purposes an explicit Natural is the same alteration as no
@@ -28,7 +27,7 @@ export const Accidentals = {
    * as an assumption in the rendering strategy.
    */
   resolve(key: KeySignature, elements: readonly MeasureElement[]): (Accidental | undefined)[][] {
-    const keyAccidentals = KeySignatureLayout.accidentals(key);
+    const keyAccidentals = KeySignature.accidentals(key);
 
     const keyAlteration = (pitch: Pitch): Accidental | undefined =>
       keyAccidentals?.letters.includes(pitch.pitchClass.letter)

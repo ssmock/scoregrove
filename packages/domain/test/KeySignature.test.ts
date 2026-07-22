@@ -57,3 +57,51 @@ describe('KeySignature', () => {
     expect(KeySignature.format(aFlatMinor)).toBe('A♭ Minor');
   });
 });
+
+const keyOf = (letter: PitchLetter, mode: Mode, accidental?: Accidental): KeySignature => ({
+  tonic: PitchClass.of(letter, accidental),
+  mode,
+});
+
+describe('KeySignature.accidentals', () => {
+  it('is empty for C major and A minor', () => {
+    expect(KeySignature.accidentals(keyOf(PitchLetter.C, Mode.Major))).toBeUndefined();
+    expect(KeySignature.accidentals(keyOf(PitchLetter.A, Mode.Minor))).toBeUndefined();
+  });
+
+  it('accumulates sharps in fifths order', () => {
+    expect(KeySignature.accidentals(keyOf(PitchLetter.G, Mode.Major))).toEqual({
+      accidental: Accidental.Sharp,
+      letters: [PitchLetter.F],
+    });
+
+    expect(KeySignature.accidentals(keyOf(PitchLetter.A, Mode.Major))).toEqual({
+      accidental: Accidental.Sharp,
+      letters: [PitchLetter.F, PitchLetter.C, PitchLetter.G],
+    });
+  });
+
+  it('accumulates flats in fourths order, minor keys included', () => {
+    expect(KeySignature.accidentals(keyOf(PitchLetter.E, Mode.Major, Accidental.Flat))).toEqual({
+      accidental: Accidental.Flat,
+      letters: [PitchLetter.B, PitchLetter.E, PitchLetter.A],
+    });
+
+    expect(KeySignature.accidentals(keyOf(PitchLetter.D, Mode.Minor))).toEqual({
+      accidental: Accidental.Flat,
+      letters: [PitchLetter.B],
+    });
+  });
+});
+
+describe('KeySignature.impliedAccidental', () => {
+  it('reports the accidental a key implies for a letter, or undefined', () => {
+    const gMajor = keyOf(PitchLetter.G, Mode.Major);
+
+    expect(KeySignature.impliedAccidental(gMajor, PitchLetter.F)).toBe(Accidental.Sharp);
+    expect(KeySignature.impliedAccidental(gMajor, PitchLetter.C)).toBeUndefined();
+    expect(
+      KeySignature.impliedAccidental(keyOf(PitchLetter.C, Mode.Major), PitchLetter.F),
+    ).toBeUndefined();
+  });
+});

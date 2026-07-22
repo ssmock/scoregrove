@@ -60,6 +60,26 @@ const minorTonics: readonly PitchClass[] = [
   pc(PitchLetter.A, Accidental.Flat),
 ];
 
+/** The order in which sharps and flats accumulate in a key signature */
+const sharpOrder: readonly PitchLetter[] = [
+  PitchLetter.F,
+  PitchLetter.C,
+  PitchLetter.G,
+  PitchLetter.D,
+  PitchLetter.A,
+  PitchLetter.E,
+  PitchLetter.B,
+];
+const flatOrder: readonly PitchLetter[] = [
+  PitchLetter.B,
+  PitchLetter.E,
+  PitchLetter.A,
+  PitchLetter.D,
+  PitchLetter.G,
+  PitchLetter.C,
+  PitchLetter.F,
+];
+
 /**
  * A key signature named by its tonic and mode (e.g. B♭ Major). Only the
  * standard circle-of-fifths signatures are permitted.
@@ -69,12 +89,51 @@ export type KeySignature = {
   mode: Mode;
 };
 
+/**
+ * The accidentals a key signature carries: which symbol, and which letters it
+ * alters, in the order they accumulate (sharps F♯ C♯ …, flats B♭ E♭ …).
+ * Undefined for the empty signature (C major / A minor).
+ */
+export type KeyAccidentals = {
+  accidental: Accidental;
+  letters: readonly PitchLetter[];
+};
+
 export const KeySignature = {
   /**
    * The tonics that form standard key signatures for the given mode
    */
   standardTonics(mode: Mode): readonly PitchClass[] {
     return mode === Mode.Major ? majorTonics : minorTonics;
+  },
+
+  /**
+   * Which letters the key signature alters and with which symbol; undefined
+   * for the empty signature (C major / A minor). Derived from the tonic's
+   * place in the circle-of-fifths ordering: index 0 is empty, 1–7 are sharp
+   * counts, 8–14 are flat counts. This is key theory (what a signature *is*),
+   * so it lives here rather than in the renderer — engraving reads it for
+   * printed positions, editing/playback for how a bare letter sounds.
+   */
+  accidentals(key: KeySignature): KeyAccidentals | undefined {
+    const index = KeySignature.standardTonics(key.mode).findIndex((tonic) =>
+      PitchClass.equals(tonic, key.tonic),
+    );
+
+    if (index <= 0) return undefined;
+
+    if (index <= 7) {
+      return { accidental: Accidental.Sharp, letters: sharpOrder.slice(0, index) };
+    }
+
+    return { accidental: Accidental.Flat, letters: flatOrder.slice(0, index - 7) };
+  },
+
+  /** The accidental the key implies for `letter` (so a bare letter sounds correctly), or undefined if the key leaves it natural */
+  impliedAccidental(key: KeySignature, letter: PitchLetter): Accidental | undefined {
+    const accidentals = KeySignature.accidentals(key);
+
+    return accidentals?.letters.includes(letter) ? accidentals.accidental : undefined;
   },
 
   create(tonic: PitchClass, mode: Mode): Result<KeySignature> {

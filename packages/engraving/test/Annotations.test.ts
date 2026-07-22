@@ -10,6 +10,7 @@ import { PitchClass, PitchLetter } from '@scoregrove/domain/Pitch';
 import { PositiveInteger } from '@scoregrove/domain/PositiveInteger';
 import { Score } from '@scoregrove/domain/Score';
 import { Staff } from '@scoregrove/domain/Staff';
+import { MetronomeMark } from '@scoregrove/domain/Tempo';
 import { Swing } from '@scoregrove/domain/TimeSignature';
 import { BeatUnit } from '@scoregrove/domain/TimeSignature';
 import { ContextWalk } from '../src/ContextWalk';
@@ -55,6 +56,26 @@ describe('Annotations', () => {
     });
 
     expect(texts(annotationsOf(score, 0))).toContain('Moderato, Medium Swing');
+  });
+
+  it('prints an exact metronome mark as its conventional text', () => {
+    const score = Score.of({
+      staves: NonEmptyArray.of([Staff.of(Clef.Treble)]),
+      key: { tonic: PitchClass.of(PitchLetter.C), mode: Mode.Major },
+      time: { beats: PositiveInteger.of(4), beatUnit: BeatUnit.Quarter },
+      tempo: MetronomeMark.of(NoteValue.Quarter, PositiveInteger.of(120)),
+      measures: NonEmptyArray.of([
+        {
+          contents: NonEmptyArray.of([
+            StaffContent.singleVoice(
+              NonEmptyArray.of([Note.of(pitch(PitchLetter.C, 4), Duration.of(NoteValue.Whole))]),
+            ),
+          ]),
+        },
+      ]),
+    });
+
+    expect(texts(annotationsOf(score, 0))).toContain('quarter = 120');
   });
 
   it('places the navigation furniture of the repeats fixture', () => {

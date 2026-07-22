@@ -9,38 +9,8 @@ const keyOf = (letter: PitchLetter, mode: Mode, accidental?: Accidental): KeySig
   mode,
 });
 
-describe('KeySignatureLayout.accidentals', () => {
-  it('is empty for C major and A minor', () => {
-    expect(KeySignatureLayout.accidentals(keyOf(PitchLetter.C, Mode.Major))).toBeUndefined();
-    expect(KeySignatureLayout.accidentals(keyOf(PitchLetter.A, Mode.Minor))).toBeUndefined();
-  });
-
-  it('accumulates sharps in fifths order', () => {
-    expect(KeySignatureLayout.accidentals(keyOf(PitchLetter.G, Mode.Major))).toEqual({
-      accidental: Accidental.Sharp,
-      letters: [PitchLetter.F],
-    });
-
-    expect(KeySignatureLayout.accidentals(keyOf(PitchLetter.A, Mode.Major))).toEqual({
-      accidental: Accidental.Sharp,
-      letters: [PitchLetter.F, PitchLetter.C, PitchLetter.G],
-    });
-  });
-
-  it('accumulates flats in fourths order, minor keys included', () => {
-    expect(
-      KeySignatureLayout.accidentals(keyOf(PitchLetter.E, Mode.Major, Accidental.Flat)),
-    ).toEqual({
-      accidental: Accidental.Flat,
-      letters: [PitchLetter.B, PitchLetter.E, PitchLetter.A],
-    });
-
-    expect(KeySignatureLayout.accidentals(keyOf(PitchLetter.D, Mode.Minor))).toEqual({
-      accidental: Accidental.Flat,
-      letters: [PitchLetter.B],
-    });
-  });
-});
+// Which letters a key alters (KeySignature.accidentals) is key theory, tested
+// in the domain's KeySignature suite; positions below are the layout part.
 
 describe('KeySignatureLayout.positions', () => {
   it('places sharps in the standard treble pattern', () => {

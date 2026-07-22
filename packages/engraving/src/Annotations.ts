@@ -1,7 +1,7 @@
 import { ClosingBarline } from '@scoregrove/domain/Barline';
 import type { Measure } from '@scoregrove/domain/Measure';
 import { NavigationJump, NavigationMark } from '@scoregrove/domain/Navigation';
-import { TempoChange, type Tempo } from '@scoregrove/domain/Tempo';
+import { MetronomeMark, TempoChange, type Tempo } from '@scoregrove/domain/Tempo';
 import { Swing } from '@scoregrove/domain/TimeSignature';
 import type { MeasureContext } from './ContextWalk';
 import { Glyphs } from './Glyphs';
@@ -31,8 +31,13 @@ const tempoChangeTexts: Record<TempoChange, string> = {
   ATempo: 'a tempo',
 };
 
-const tempoText = (tempo: Tempo): string =>
-  TempoChange.is(tempo) ? tempoChangeTexts[tempo] : tempo;
+const tempoText = (tempo: Tempo): string => {
+  // A metronome mark prints its exact form ("quarter = 120"); a change prints
+  // its abbreviation ("rit."); an absolute marking prints its Italian name.
+  if (MetronomeMark.is(tempo)) return MetronomeMark.format(tempo);
+
+  return TempoChange.is(tempo) ? tempoChangeTexts[tempo] : tempo;
+};
 
 /** The feel names as printed on charts */
 const swingTexts: Record<Swing, string> = {
