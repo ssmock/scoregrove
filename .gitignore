@@ -5,6 +5,7 @@ node_modules
 dist
 dist-ssr
 storybook-static
+print-preview.pdf
 
 # TypeScript
 *.tsbuildinfo

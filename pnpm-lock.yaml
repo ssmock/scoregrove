@@ -133,6 +133,9 @@ importers:
       happy-dom:
         specifier: ^15.11.7
         version: 15.11.7
+      playwright-core:
+        specifier: 1.61.1
+        version: 1.61.1
       storybook:
         specifier: ^10.5.2
         version: 10.5.2(@types/react@19.2.17)(prettier@3.9.5)(react@19.2.7)
@@ -4282,8 +4285,7 @@ snapshots:
 
   picomatch@4.0.5: {}
 
-  playwright-core@1.61.1:
-    optional: true
+  playwright-core@1.61.1: {}
 
   playwright@1.61.1:
     dependencies:

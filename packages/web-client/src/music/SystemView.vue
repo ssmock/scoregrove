@@ -93,6 +93,7 @@ function onContextmenu(event: MouseEvent): void {
 <template>
   <svg
     ref="svg"
+    class="system-view"
     :viewBox="viewBox"
     :width="(props.system.width + labelMargin) * props.scale"
     :height="height * props.scale"
@@ -145,3 +146,32 @@ function onContextmenu(event: MouseEvent): void {
     <slot name="overlay" />
   </svg>
 </template>
+
+<style scoped>
+/*
+ * `width`/`height` above are set from the last on-screen measurement
+ * (`ScoreView`'s ResizeObserver), which doesn't reliably re-fire for the
+ * print rendering pass — a printed page can end up narrower than that
+ * frozen pixel width, clipping the right edge of every system. `max-width`
+ * (never `width`, which would also stretch a shorter, intentionally-ragged
+ * last system to fill its container) lets each system shrink to fit
+ * whatever it's actually rendered into, on screen or on paper, without
+ * ever growing past its laid-out size; `height: auto` keeps the aspect
+ * ratio the `viewBox` already implies.
+ *
+ * `overflow: visible` overrides the root `<svg>`'s default clip-to-viewBox:
+ * a justified system's closing barline is anchored at exactly `x =
+ * measure.width`, i.e. exactly the viewBox's own right edge (`MeasureView`'s
+ * `<BarlineView :x="props.measure.width" />`), with zero margin to spare —
+ * print's higher-precision rasterization was clipping that barline (and
+ * whatever lands at the very edge) rather than just anti-aliasing it, since
+ * a stroke centered/ending exactly on a clip boundary is one rounding error
+ * away from falling on the wrong side of it.
+ */
+svg {
+  display: block;
+  max-width: 100%;
+  height: auto;
+  overflow: visible;
+}
+</style>

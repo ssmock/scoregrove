@@ -35,6 +35,7 @@ const store = useEditorStore();
 .editor-view__stage {
   flex: 1 1 auto;
   min-width: 0;
+  max-width: 1200px;
   padding: var(--space-5);
   overflow: auto;
 }

@@ -1,6 +1,11 @@
 import type { Preview } from '@storybook/vue3-vite';
 import '../src/ui/tokens.css';
 import '../src/music/smufl.css';
+// Guarded entirely by `@media print`, so this has no effect on ordinary
+// (screen) story rendering — imported here so a print-media emulation
+// (e.g. `scripts/print-preview.mjs`) actually exercises the same rules the
+// real app's `main.ts` loads, instead of silently seeing none of them.
+import '../src/shell/print.css';
 import { loadMusicFont } from '../src/music/fonts';
 
 const preview: Preview = {

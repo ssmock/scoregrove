@@ -173,6 +173,52 @@ shell, then the feature steps of TODO-UX.md.
       scrolling); wraps the existing ScoreView/SystemView machinery
 - [x] Performance view — full-bleed vertical score, corner hover menu (Edit / Print / Staff),
       print stylesheet (not yet visually verified — see TO-VERIFY.md)
+- [x] Staff width caps — `.editor-view__stage` caps at 1200px in vertical flow (harmless in
+      horizontal flow, which scrolls its own unbroken system regardless of container width);
+      `.performance-view__stage` caps at 8.5in (a guess — no page-size preference is stored yet,
+      so this stands in for "a page" on US Letter; worth revisiting if A4 matters). Fixed a real
+      print bug along the way: each system's `<svg>` had its `width`/`height` frozen at the
+      last on-screen `ResizeObserver` measurement, which doesn't reliably re-fire for the print
+      pass, so a system wider than the actual printed page clipped at its right edge — a printed
+      score's every line, cut off. `SystemView.vue` now caps the svg at `max-width: 100%` and
+      `height: auto` (never `width: 100%`, which would also stretch the intentionally-ragged
+      last system of a line-broken score) so each system fits whatever it's rendered into, on
+      screen or on paper, without JS needing to react to the print event at all. `print.css` also
+      resets `.performance-view__stage`'s new max-width/margin for print, so the printed page
+      fills whatever width the browser's own paper/margins give it rather than our on-screen
+      guess. A second, separate print bug surfaced after that fix: a system straddling a page
+      boundary (often the last one, if the piece doesn't end exactly on a page) was getting
+      sliced off at the page edge rather than pushed onto the next page — each system SVG can't
+      reflow mid-element the way text can, so without `break-inside` it just clips wherever the
+      page ends. `SystemView.vue`'s svg now carries a `system-view` class and `print.css` sets
+      `break-inside`/`page-break-inside: avoid` on it, so a system that doesn't fully fit moves
+      to the next page whole instead of being cut. A third bug (the actually-reported "still
+      clipping off the right edge," after both fixes above) turned out to be two compounding
+      causes, found only once real print tooling existed to check against (see "Print-preview
+      tooling" below) rather than reading the CSS and guessing: (1) `print.css`'s
+      `.performance-view__stage`/`.editor-view`/`.performance-view` resets were silently losing
+      to each component's own _scoped_ on-screen rule for the same properties — Vue scoped
+      styles add an attribute selector, which outranks a plain class selector regardless of
+      `@media print`, so `max-width`/`margin`/`padding`/`height`/`overflow` needed `!important`
+      to actually apply, the same way the chrome-hiding rules already had it; and (2) a
+      justified system's closing barline is anchored at exactly `x = measure.width` — precisely
+      the system SVG's own right edge (`MeasureView.vue`'s
+      `<BarlineView :x="props.measure.width" />`) — with zero margin to spare, and print's
+      higher-precision rasterization was clipping it via the SVG's default clip-to-viewBox
+      rather than just anti-aliasing it away. `svg` in `SystemView.vue` now also sets
+      `overflow: visible`.
+- [x] Print-preview tooling — `scripts/print-preview.mjs` (`pnpm --filter web-client print:preview`)
+      serves the built Storybook output and drives headless Chromium
+      (`playwright-core`, a new devDependency) through a real `page.pdf()` print pass against a
+      dedicated `PerformanceLongScore` story (`App.stories.ts`, a 500-whole-note fixture built to
+      force multiple printed pages), so print/pagination bugs can actually be _seen_ — a PDF, not
+      just CSS read by eye — rather than guessed at from source. Building this surfaced its own
+      gap along the way: `.storybook/preview.ts` never imported `print.css` at all, so no print
+      rule had ever actually been exercised by any prior "verification" that went through
+      Storybook. This environment has no headless browser by default (Playwright's bundled
+      Chromium is missing `libnspr4`/`libnss3`/etc.) and `pdftoppm` (from `poppler-utils`) is
+      needed to view a generated PDF's pages as images — both are one-time `sudo apt-get install`
+      away, outside what this environment can do for itself.
 
 ### Step 1 — staff setup
 

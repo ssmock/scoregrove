@@ -49,6 +49,11 @@ function print(): void {
 }
 
 .performance-view__stage {
+  /* No page-size preference is stored yet, so this guesses US Letter (8.5in
+     wide) as the on-screen stand-in for "a page" — printing itself isn't
+     bound by this, see print.css. */
+  max-width: 8.5in;
+  margin: 0 auto;
   padding: var(--space-5);
 }
 

@@ -4,10 +4,18 @@
  * as a plain full-width document. Global rather than scoped to a component,
  * since printing needs to reach across the whole page at once. Vue's
  * scoped styles only add an extra attribute selector alongside the class —
- * they don't rename it — so plain class selectors here still match.
+ * they don't rename it, so plain class selectors here still *match* — but
+ * that attribute selector does make the component's own scoped rule more
+ * *specific* than a plain class selector here, `@media print` or not:
+ * specificity is compared across the whole cascade, not just within one
+ * stylesheet, so every property below that a component also sets on-screen
+ * (`.editor-view__stage`'s padding/overflow/max-width, `.performance-view`'s
+ * height/overflow, etc.) needs `!important` to actually win, the same way
+ * the chrome-hiding rules already did — discovered by generating an actual
+ * print PDF (`scripts/print-preview.mjs`) and finding these resets silently
+ * weren't applying at all.
  *
- * Not yet visually verified against real print/PDF output — see
- * TO-VERIFY.md.
+ * Not yet visually verified against real *paper* — see TO-VERIFY.md.
  */
 @media print {
   .sidebar,
@@ -23,12 +31,35 @@
 
   .editor-view,
   .performance-view {
-    height: auto;
-    overflow: visible;
+    height: auto !important;
+    overflow: visible !important;
   }
 
   .editor-view__stage {
-    padding: 0;
-    overflow: visible;
+    max-width: none !important;
+    padding: 0 !important;
+    overflow: visible !important;
+  }
+
+  .performance-view__stage {
+    /* The on-screen page-width guess (see PerformanceView.vue) is only a
+       stand-in for a real page — printing should fill whatever width the
+       browser's own paper/margins actually give it, not our guess. */
+    max-width: none !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    overflow: visible !important;
+  }
+
+  /*
+   * Each system is one atomic SVG — it can't reflow mid-element the way text
+   * can, so a system that doesn't fully fit in the space left on a page gets
+   * sliced off at the page edge (clipping whatever measure landed there,
+   * often the score's very last one) unless the browser is told to push the
+   * whole thing onto the next page instead.
+   */
+  .system-view {
+    break-inside: avoid;
+    page-break-inside: avoid;
   }
 }
