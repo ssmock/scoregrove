@@ -13,6 +13,9 @@
     "dev:server": "pnpm --filter server dev",
     "dev:web": "pnpm --filter web-client dev",
     "storybook": "pnpm --filter web-client storybook",
+    "tunnels": "node scripts/tunnels.mjs",
+    "tunnels:urls": "node scripts/tunnels-urls.mjs",
+    "tunnels:stop": "node scripts/tunnels-stop.mjs",
     "lint": "eslint .",
     "lint:fix": "eslint . --fix",
     "format": "prettier --write .",
@@ -20,6 +23,7 @@
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",
+    "@ngrok/ngrok": "^1.7.0",
     "eslint": "^10.7.0",
     "eslint-config-prettier": "^10.1.8",
     "eslint-plugin-storybook": "^10.5.2",

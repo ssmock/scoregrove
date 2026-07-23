@@ -34,3 +34,6 @@ Thumbs.db
 
 # Local overrides
 *.local
+
+# Live ngrok tunnel URLs (written by `pnpm tunnels`)
+.tunnels.json
