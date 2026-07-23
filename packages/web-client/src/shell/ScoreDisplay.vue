@@ -19,6 +19,7 @@ import { canvasTextMeasurer } from '../music/textMeasure';
 import { useEditorStore } from '../store/useEditorStore';
 import { useHotkeys } from '../ui/composables/useHotkeys';
 import ElementEditorFlyout from './ElementEditorFlyout.vue';
+import PlaybackBarFlyout from './PlaybackBarFlyout.vue';
 
 /**
  * The score however the current flow preset wants it shown: vertical
@@ -85,6 +86,26 @@ const flyout = ref<{
   onset: Fraction;
   pitch: Pitch | null;
 } | null>(null);
+
+/** The right-click playback menu on a bar handle */
+const barFlyout = ref<{ at: { x: number; y: number }; measure: number } | null>(null);
+
+/** Left-click a bar handle: seek the playhead there */
+function onBarClick(payload: { measureIndex: number }): void {
+  store.seekToMeasure(payload.measureIndex);
+}
+
+/** Right-click a bar handle: open the seek/loop menu */
+function onBarContextmenu(payload: {
+  measureIndex: number;
+  clientX: number;
+  clientY: number;
+}): void {
+  barFlyout.value = {
+    at: { x: payload.clientX, y: payload.clientY },
+    measure: payload.measureIndex,
+  };
+}
 
 /** The real-score address a hit's `staffIndex` corresponds to, through the display projection */
 function realAddress(hit: StaffHit): ScoreAddress {
@@ -421,10 +442,15 @@ useHotkeys(
       v-if="flow === 'vertical'"
       :score="projected"
       :scale="scale"
+      bar-handles
+      :loop-start="store.state.playback.loopStartMeasure"
+      :loop-end="store.state.playback.loopEndMeasure"
       @hover="onHoverVertical"
       @leave="onLeave"
       @activate="onActivate"
       @contextmenu="onContextmenu"
+      @barclick="onBarClick"
+      @barcontextmenu="onBarContextmenu"
     >
       <template #overlay="{ systemIndex }">
         <template v-if="hover && hover.systemIndex === systemIndex">
@@ -457,10 +483,16 @@ useHotkeys(
         v-if="unbrokenSystem"
         :system="unbrokenSystem"
         :scale="scale"
+        bar-handles
+        is-last-system
+        :loop-start="store.state.playback.loopStartMeasure"
+        :loop-end="store.state.playback.loopEndMeasure"
         @hover="onHoverHorizontal"
         @leave="onLeave"
         @activate="onActivateHorizontal"
         @contextmenu="onContextmenuHorizontal"
+        @barclick="onBarClick"
+        @barcontextmenu="onBarContextmenu"
       >
         <template #overlay>
           <template v-if="hover && hover.systemIndex === 0">
@@ -497,6 +529,13 @@ useHotkeys(
       :onset="flyout?.onset ?? null"
       :pitch="flyout?.pitch ?? null"
       @close="flyout = null"
+    />
+
+    <PlaybackBarFlyout
+      :open="!!barFlyout"
+      :at="barFlyout?.at ?? null"
+      :measure="barFlyout?.measure ?? null"
+      @close="barFlyout = null"
     />
   </div>
 </template>

@@ -21,6 +21,7 @@
   .sidebar,
   .performance-view__corner,
   .performance-view__transport,
+  .bar-handles,
   .app-dialog-overlay,
   .app-flyout {
     display: none !important;

@@ -386,7 +386,28 @@ in `packages/playback`; driver/UI in `web-client`.
       performance view (a pinned bottom-center card) and the editor sidebar. Verified rendering
       in all three story contexts via headless Chromium (no runtime errors, since `.vue` isn't
       type-checked).
-- [ ] Playhead/highlight overlay + click-to-seek
+- [x] Per-bar playback handles + click-to-seek + A–B loop region — a tiny faint tick (bright on
+      hover) resting on the top staff line at every **barline** (`SystemView`, gated by a
+      `barHandles` prop, plumbed through `ScoreView`/`ScoreDisplay`), plus one at the piece's final
+      barline. Handles are hidden when printing. Left-click seeks the playhead to that barline
+      (cueing the highlight even while stopped, and playing from there even before playback has
+      started — the store now loads the performance into the transport before any seek/loop, so
+      the transport's seek isn't clamped against a zero duration); right-click opens
+      `PlaybackBarFlyout`
+      (seek / set-remove loop start / set-remove loop end). Setting a loop start also seeks there.
+      Bounds are barline positions, so a passage runs from its start barline up to — not through —
+      its end barline; the loop draws as one continuous band over exactly the bars between (per
+      system), and the `TransportBar` shows a "⟲ 2–4 ✕" readout that clears it. The transport
+      gained an A–B loop region (`setLoopRegion`, precedence over the whole-piece toggle, never
+      scheduling past the loop end); the store maps loop barlines to seconds via a per-measure
+      timeline (`TimeMapping.measureTimes`, on the `Performance`), anchoring to each bar's
+      **first** occurrence in the play order (repeats keep the earliest slot — a documented
+      simplification). The `TransportBar` stacks in two rows — controls on top, the seek scrubber
+      and time readout on their own line below — so it fits the narrow editor sidebar. Verified
+      end-to-end via headless Chromium (ticks render on the top line, the band ends exactly at the
+      loop-end tick, handles vanish under print media, a seek before any playback cues the clicked
+      bar rather than clamping to the start, and the two-row transport fits ~260px without
+      overflow).
 - [ ] Tempo/scale control; (optional) count-in/metronome toggle
 
 ### Demo / tests
@@ -499,8 +520,9 @@ work; the first three are the load-bearing forks.
    for those are in §A; none are settled.
 7. **Crescendo/diminuendo (A)** — the gradual ramp is deferred (level steps to the next mark for
    now); when built, decide the unterminated-ramp default (ramp one dynamic step vs. hold flat).
-8. **Highlight & seek UX (C)** — cursor line vs. note wash; is click-to-seek / play-from-here in
-   v1? Auto-scroll behavior in each flow.
+8. ~~**Highlight & seek UX (C)**~~ — ✅ **DONE (mostly).** Note-wash highlight; click-to-seek via
+   per-bar handles (left-click seeks, right-click sets an A–B loop passage). Auto-scroll to keep
+   the playhead in view is the one piece still open.
 9. **Playback prefs persistence (C)** — persist per-project tempo scale / (future) instrument
    like other prefs, or keep ephemeral?
 10. **Count-in / metronome in v1? (C)** — include a click track and count-in, or defer?

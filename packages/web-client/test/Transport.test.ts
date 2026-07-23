@@ -15,6 +15,7 @@ const event = (startSeconds: number, pitchNumber: number, durationSeconds = 0.5)
 const performanceOf = (events: NoteEvent[]): Performance => ({
   events,
   durationSeconds: events.reduce((max, e) => Math.max(max, e.startSeconds + e.durationSeconds), 0),
+  measureTimes: [],
 });
 
 /** A test rig: a controllable clock, a recording instrument, and a manual timer. */
@@ -154,6 +155,23 @@ describe('Transport scheduling', () => {
     r.transport.tick();
 
     expect(r.transport.status()).toBe('stopped');
+  });
+
+  it('loops over an A–B region, never scheduling past its end', () => {
+    const r = rig();
+    r.transport.load(performanceOf([event(0, 60), event(1, 62), event(2, 64)]));
+    r.transport.setLoopRegion(1, 2); // loop just the second event's bar
+    r.transport.seek(1);
+    r.transport.play(); // schedules the event at 1
+    r.scheduled.length = 0;
+
+    r.advance(1); // clock 1 → position reaches the region end (2)
+    r.transport.tick();
+
+    expect(r.transport.status()).toBe('playing');
+    // looped back and replayed the region's event; the event at the loop end never sounds
+    expect(r.scheduled.map((v) => v.frequency)).toEqual([62]);
+    expect(r.scheduled.some((v) => v.frequency === 64)).toBe(false);
   });
 
   it('loops back to the start when looping is on', () => {

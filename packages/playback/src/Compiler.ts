@@ -3,16 +3,20 @@ import { Score } from '@scoregrove/domain/Score';
 import { Dynamics } from './Dynamics';
 import { EventFlattening } from './EventFlattening';
 import { NavigationUnfolding } from './NavigationUnfolding';
-import { TimeMapping, type NoteEvent } from './TimeMapping';
+import { TimeMapping, type MeasureTime, type NoteEvent } from './TimeMapping';
 
 /**
  * The compiled performance: every sounded pitch placed in real time, in start
- * order, plus the total duration. Plain JSON — serializable, so it can back a
- * later MIDI/WAV export or a piano-roll view as readily as the audio driver.
+ * order, the total duration, and where each measure first falls on the
+ * timeline (for seeking to a bar or looping a passage). Plain JSON —
+ * serializable, so it can back a later MIDI/WAV export or a piano-roll view as
+ * readily as the audio driver.
  */
 export type Performance = {
   events: readonly NoteEvent[];
   durationSeconds: number;
+  /** First-occurrence real-time span per measure index (holes only for measures never played) */
+  measureTimes: readonly MeasureTime[];
 };
 
 export const Compiler = {
@@ -33,7 +37,8 @@ export const Compiler = {
     const tempoMap = TimeMapping.build(score, playOrder);
     const velocities = Dynamics.velocities(score);
     const events = TimeMapping.toNoteEvents(beatEvents, tempoMap, velocities);
+    const measureTimes = TimeMapping.measureTimes(playOrder, tempoMap);
 
-    return Result.ok({ events, durationSeconds: tempoMap.durationSeconds });
+    return Result.ok({ events, durationSeconds: tempoMap.durationSeconds, measureTimes });
   },
 };

@@ -31,8 +31,26 @@ const props = withDefaults(
     system: LaidOutSystem;
     scale?: number;
     labels?: readonly (string | undefined)[];
+    /** Show a clickable playback handle at each bar's opening barline */
+    barHandles?: boolean;
+    /** The system holding the piece's final barline — it gets the extra end-of-piece handle */
+    isLastSystem?: boolean;
+    /**
+     * Barline indices bounding the loop passage: index i is the barline before
+     * measure i (so the passage runs from `loopStart` up to, not through,
+     * `loopEnd`). The final barline is index `measureCount`.
+     */
+    loopStart?: number | null;
+    loopEnd?: number | null;
   }>(),
-  { scale: 10, labels: () => [] },
+  {
+    scale: 10,
+    labels: () => [],
+    barHandles: false,
+    isLastSystem: false,
+    loopStart: null,
+    loopEnd: null,
+  },
 );
 
 const emit = defineEmits<{
@@ -40,7 +58,56 @@ const emit = defineEmits<{
   leave: [];
   activate: [{ x: number; y: number }];
   contextmenu: [{ x: number; y: number; clientX: number; clientY: number }];
+  barclick: [{ measureIndex: number; clientX: number; clientY: number }];
+  barcontextmenu: [{ measureIndex: number; clientX: number; clientY: number }];
 }>();
+
+// A tiny tick resting on top of the top staff line at each barline (the top
+// line is at y = 0, so the tick's bottom sits there). ~3px wide at the default
+// scale; small on purpose.
+const handleWidth = 0.3;
+const handleHeight = 1.2;
+const handleY = -handleHeight;
+
+// The loop passage rides a thin strip just above the staff, clear of the notes.
+const bandY = -1.9;
+const bandHeight = 0.7;
+
+/** The end-of-piece barline handle, on the last system only (index = one past the last measure) */
+const finalHandle = computed(() => {
+  const last = props.system.measures.at(-1);
+
+  return last ? { index: last.index + 1, x: props.system.width } : null;
+});
+
+/**
+ * The loop passage as one continuous band, from the start barline to the end
+ * barline — i.e. over the measures the passage actually contains, *excluding*
+ * the measure after the end barline. Only when both bounds are set and part of
+ * the passage falls in this system.
+ */
+const loopBand = computed(() => {
+  if (props.loopStart === null || props.loopEnd === null) return null;
+
+  const lo = Math.min(props.loopStart, props.loopEnd);
+  const hi = Math.max(props.loopStart, props.loopEnd);
+  const inRange = props.system.measures.filter((entry) => entry.index >= lo && entry.index < hi);
+
+  if (!inRange.length) return null;
+
+  const first = inRange[0];
+  const last = inRange[inRange.length - 1];
+
+  return { x: first.x, width: last.x + (last.staves[0]?.width ?? 0) - first.x };
+});
+
+function onBarClick(measureIndex: number, event: MouseEvent): void {
+  emit('barclick', { measureIndex, clientX: event.clientX, clientY: event.clientY });
+}
+
+function onBarContextmenu(measureIndex: number, event: MouseEvent): void {
+  emit('barcontextmenu', { measureIndex, clientX: event.clientX, clientY: event.clientY });
+}
 
 /** The left margin reserved when any staff prints a label */
 const labelMargin = computed(() => (props.labels.some((label) => label) ? 8 : 0));
@@ -140,6 +207,52 @@ function onContextmenu(event: MouseEvent): void {
       </template>
     </g>
     <!--
+      Playback bar handles: a small clickable tab above each measure's opening
+      edge, with the loop passage drawn as one continuous band over the bars
+      between its bounds. Left-click seeks; right-click opens the loop/seek
+      flyout. Stops propagation so a handle never doubles as a note click.
+    -->
+    <g v-if="props.barHandles" class="bar-handles">
+      <rect
+        v-if="loopBand"
+        class="loop-band"
+        :x="loopBand.x"
+        :y="bandY"
+        :width="loopBand.width"
+        :height="bandHeight"
+        rx="0.2"
+      />
+      <rect
+        v-for="entry in props.system.measures"
+        :key="`bar-${entry.index}`"
+        class="bar-handle"
+        :class="{
+          'bar-handle--loop': entry.index === props.loopStart || entry.index === props.loopEnd,
+        }"
+        :x="entry.x - handleWidth / 2"
+        :y="handleY"
+        :width="handleWidth"
+        :height="handleHeight"
+        @click.stop="onBarClick(entry.index, $event)"
+        @contextmenu.stop.prevent="onBarContextmenu(entry.index, $event)"
+      />
+      <rect
+        v-if="props.isLastSystem && finalHandle"
+        class="bar-handle"
+        :class="{
+          'bar-handle--loop':
+            finalHandle.index === props.loopStart || finalHandle.index === props.loopEnd,
+        }"
+        :x="finalHandle.x - handleWidth / 2"
+        :y="handleY"
+        :width="handleWidth"
+        :height="handleHeight"
+        @click.stop="onBarClick(finalHandle.index, $event)"
+        @contextmenu.stop.prevent="onBarContextmenu(finalHandle.index, $event)"
+      />
+    </g>
+
+    <!--
       System-space overlay for interactive callers (hover highlight, ghost
       preview) — unused, and so invisible, when nobody provides it.
     -->
@@ -173,5 +286,28 @@ svg {
   max-width: 100%;
   height: auto;
   overflow: visible;
+}
+
+.bar-handle {
+  fill: var(--color-accent);
+  opacity: 0.07; /* very faint until hovered */
+  cursor: pointer;
+  transition: opacity var(--duration-fast, 120ms) var(--easing-standard, ease);
+}
+
+.bar-handle:hover {
+  opacity: 0.7;
+}
+
+/* A bar set as a loop bound stays visible */
+.bar-handle--loop {
+  opacity: 0.7;
+}
+
+/* The continuous loop passage spanning the bars between the bounds */
+.loop-band {
+  fill: var(--color-accent);
+  opacity: 0.16;
+  pointer-events: none;
 }
 </style>

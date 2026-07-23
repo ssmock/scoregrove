@@ -23,10 +23,17 @@ import { canvasTextMeasurer } from './textMeasure';
  * overlay, tagged with which system it belongs to, so an interactive caller
  * can draw a hover highlight or placement ghost in the right one.
  */
-const props = withDefaults(defineProps<{ score: Score; scale?: number; width?: number }>(), {
-  scale: 10,
-  width: undefined,
-});
+const props = withDefaults(
+  defineProps<{
+    score: Score;
+    scale?: number;
+    width?: number;
+    barHandles?: boolean;
+    loopStart?: number | null;
+    loopEnd?: number | null;
+  }>(),
+  { scale: 10, width: undefined, barHandles: false, loopStart: null, loopEnd: null },
+);
 
 /**
  * A hover point ready to render an overlay glyph without the caller needing
@@ -43,6 +50,8 @@ const emit = defineEmits<{
   leave: [];
   activate: [{ systemIndex: number; hit: StaffHit }];
   contextmenu: [{ systemIndex: number; hit: StaffHit; clientX: number; clientY: number }];
+  barclick: [{ measureIndex: number; clientX: number; clientY: number }];
+  barcontextmenu: [{ measureIndex: number; clientX: number; clientY: number }];
 }>();
 
 const root = ref<HTMLElement | null>(null);
@@ -115,10 +124,16 @@ function onContextmenu(
       :system="system"
       :scale="props.scale"
       :labels="index === 0 ? laidOut.staffLabels : []"
+      :bar-handles="props.barHandles"
+      :is-last-system="index === laidOut.systems.length - 1"
+      :loop-start="props.loopStart"
+      :loop-end="props.loopEnd"
       @hover="(point) => onHover(index, point)"
       @leave="emit('leave')"
       @activate="(point) => onActivate(index, point)"
       @contextmenu="(point) => onContextmenu(index, point)"
+      @barclick="(payload) => emit('barclick', payload)"
+      @barcontextmenu="(payload) => emit('barcontextmenu', payload)"
     >
       <template #overlay>
         <slot name="overlay" :system-index="index" />

@@ -40,6 +40,12 @@ export type TempoMap = {
   durationSeconds: number;
 };
 
+/** The real-time span of a measure's first performance in the play order. */
+export type MeasureTime = {
+  startSeconds: number;
+  endSeconds: number;
+};
+
 /** A sounded pitch placed in real time — the `Performance`'s unit. */
 export type NoteEvent = {
   startSeconds: number;
@@ -109,6 +115,29 @@ export const TimeMapping = {
     }
 
     return { segments, durationSeconds: secondsCursor };
+  },
+
+  /**
+   * The real-time span of each measure's *first* occurrence in the play order,
+   * indexed by measure index. Repeated measures keep their earliest slot — the
+   * anchor for seeking to a bar or looping over a passage. (Segments are 1:1
+   * with the play order, so `segments[i]` is `playOrder[i]`'s occurrence.)
+   */
+  measureTimes(playOrder: readonly PlayStep[], map: TempoMap): MeasureTime[] {
+    const times: MeasureTime[] = [];
+
+    playOrder.forEach((step, index) => {
+      const segment = map.segments[index];
+
+      if (!segment || times[step.measureIndex] !== undefined) return;
+
+      times[step.measureIndex] = {
+        startSeconds: segment.secondsStart,
+        endSeconds: TimeMapping.secondsAt(map, segment.beatEnd),
+      };
+    });
+
+    return times;
   },
 
   /**

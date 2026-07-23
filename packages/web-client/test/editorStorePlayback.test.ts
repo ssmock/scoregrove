@@ -64,10 +64,17 @@ const fakeTransport = () => {
       position = 0;
     },
     seek: (seconds: number) => {
-      calls.push(`seek:${seconds}`);
-      position = seconds;
+      // The real transport clamps to the loaded performance's duration (0 when
+      // nothing is loaded), so mirror that here — it's what a seek before the
+      // first load used to round down to 0.
+      const clamped = Math.min(Math.max(seconds, 0), duration);
+
+      calls.push(`seek:${clamped}`);
+      position = clamped;
     },
     setLoop: (loop: boolean) => calls.push(`loop:${loop}`),
+    setLoopRegion: (start: number | null, end: number | null) =>
+      calls.push(`region:${start}-${end}`),
     tick: () => {},
     status: () => status,
     positionSeconds: () => position,
@@ -104,14 +111,14 @@ describe('editor store playback', () => {
     expect(Result.isOk(store.togglePlayback())).toBe(true);
     expect(store.state.playback.status).toBe('playing');
     expect(store.state.playback.durationSeconds).toBeGreaterThan(0);
-    expect(fake.calls).toEqual(['load', 'play']);
+    expect(fake.calls).toEqual(['load', 'region:null-null', 'play']);
 
     store.togglePlayback(); // pause
     expect(store.state.playback.status).toBe('paused');
 
     store.togglePlayback(); // resume — no recompile/reload
     expect(store.state.playback.status).toBe('playing');
-    expect(fake.calls).toEqual(['load', 'play', 'pause', 'play']);
+    expect(fake.calls).toEqual(['load', 'region:null-null', 'play', 'pause', 'play']);
 
     store.dispose();
   });
@@ -184,6 +191,76 @@ describe('editor store playback', () => {
 
     fake.emit(100); // past the end — nothing sounding
     expect(store.state.playback.sounding).toEqual([]);
+
+    store.dispose();
+  });
+
+  it('seeks to a measure and cues the highlight while stopped', () => {
+    // two whole-note bars; measure 1 starts partway through
+    const { store, fake } = storeWith(
+      scoreOf([measureOf([note(PitchLetter.C, whole)]), measureOf([note(PitchLetter.D, whole)])]),
+    );
+
+    store.seekToMeasure(1);
+
+    expect(store.state.playback.status).toBe('stopped'); // not playing, just cued
+    expect(store.state.playback.positionSeconds).toBeGreaterThan(0);
+    expect(fake.calls.some((c) => c.startsWith('seek:'))).toBe(true);
+    // the note in measure 1 is highlighted as the cue
+    expect(store.state.playback.sounding).toEqual([{ measure: 1, staff: 0, voice: 0, element: 0 }]);
+
+    store.dispose();
+  });
+
+  it('toggles loop-passage bounds and hands the region to the transport', () => {
+    const { store, fake } = storeWith(
+      scoreOf([
+        measureOf([note(PitchLetter.C, whole)]),
+        measureOf([note(PitchLetter.D, whole)]),
+        measureOf([note(PitchLetter.E, whole)]),
+      ]),
+    );
+
+    store.togglePlayback(); // builds the transport and applies the (empty) region
+    store.stopPlayback();
+    fake.calls.length = 0;
+
+    store.toggleLoopStart(1);
+    store.toggleLoopEnd(2);
+
+    expect(store.state.playback.loopStartMeasure).toBe(1);
+    expect(store.state.playback.loopEndMeasure).toBe(2);
+    // setting the loop start also seeks there
+    expect(fake.calls.some((c) => c.startsWith('seek:'))).toBe(true);
+    // a concrete region (start of bar 1 .. end of bar 2) reached the transport
+    const region = fake.calls.filter((c) => c.startsWith('region:')).at(-1);
+    expect(region).toMatch(/^region:\d/);
+    expect(region).not.toContain('null');
+
+    // toggling the same bar again clears it
+    store.toggleLoopStart(1);
+    expect(store.state.playback.loopStartMeasure).toBeNull();
+
+    store.dispose();
+  });
+
+  it('plays from a seeked position even before playback has ever started', () => {
+    const { store, fake } = storeWith(
+      scoreOf([measureOf([note(PitchLetter.C, whole)]), measureOf([note(PitchLetter.D, whole)])]),
+    );
+
+    // Seeking while stopped loads the performance first, so the transport has a
+    // real duration to seek within — without that the seek would clamp to 0.
+    store.seekToMeasure(1);
+    const seekedTo = store.state.playback.positionSeconds;
+    expect(seekedTo).toBeGreaterThan(0);
+
+    fake.calls.length = 0;
+    store.togglePlayback();
+
+    // play resumes from the seeked spot, not the top of the piece
+    expect(fake.calls).toContain(`seek:${seekedTo}`);
+    expect(fake.calls.indexOf('play')).toBeGreaterThan(fake.calls.indexOf(`seek:${seekedTo}`));
 
     store.dispose();
   });

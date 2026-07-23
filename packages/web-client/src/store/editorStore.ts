@@ -129,6 +129,9 @@ type EditorState = {
     positionSeconds: number;
     durationSeconds: number;
     loop: boolean;
+    /** The measures bounding an A–B loop passage (null when unset); either end may be set alone */
+    loopStartMeasure: number | null;
+    loopEndMeasure: number | null;
     /** Addresses of the notes/chords sounding right now, for the on-staff playhead highlight */
     sounding: readonly ScoreAddress[];
   };
@@ -176,6 +179,8 @@ export function createEditorStore(initial: Score = blankScore(), deps: EditorSto
       positionSeconds: 0,
       durationSeconds: 0,
       loop: false,
+      loopStartMeasure: null,
+      loopEndMeasure: null,
       sounding: [],
     },
   });
@@ -186,6 +191,38 @@ export function createEditorStore(initial: Score = blankScore(), deps: EditorSto
 
   let transport: Transport | null = null;
   let performance: Performance | null = null;
+  let loaded: Performance | null = null; // the performance currently loaded into the transport
+
+  /** The compiled performance of the current score, cached; recompiled after edits. Null if invalid. */
+  const ensureCompiled = (): Performance | null => {
+    if (performance) return performance;
+
+    const compiled = Compiler.compile(state.score);
+
+    return Result.isOk(compiled) ? (performance = compiled.value) : null;
+  };
+
+  /**
+   * Ensures the transport holds the current performance. The transport clamps
+   * seeks and the loop region to the loaded performance's duration, so with
+   * nothing loaded (duration 0) a seek would clamp to 0 — which is why seeking
+   * or looping before the first Play must load the performance now, not just at
+   * play time. Returns the performance, or null if the score can't be compiled.
+   */
+  const ensureLoaded = (): Performance | null => {
+    const compiled = ensureCompiled();
+
+    if (!compiled) return null;
+
+    const t = ensureTransport();
+
+    if (loaded !== compiled) {
+      t.load(compiled);
+      loaded = compiled;
+    }
+
+    return compiled;
+  };
 
   /** The notes/chords sounding at `seconds` — events already begun and not yet ended. */
   const soundingAt = (seconds: number): ScoreAddress[] => {
@@ -199,6 +236,62 @@ export function createEditorStore(initial: Score = blankScore(), deps: EditorSto
     }
 
     return result;
+  };
+
+  /** The real-time position of a barline index — the measure's start, or the piece end for the final barline. */
+  const barlineSeconds = (barline: number): number | undefined => {
+    const compiled = ensureCompiled();
+
+    if (!compiled) return undefined;
+
+    return barline < compiled.measureTimes.length
+      ? compiled.measureTimes[barline]?.startSeconds
+      : compiled.durationSeconds;
+  };
+
+  /**
+   * Translates the loop-passage barlines into seconds and hands the region to
+   * the transport. The passage runs from the earlier barline up to (not
+   * through) the later one, whatever order they were clicked; a single bound
+   * defaults the other to the piece start/end.
+   */
+  const applyLoopRegion = (): void => {
+    if (!ensureLoaded()) return;
+
+    const t = ensureTransport();
+    const { loopStartMeasure: a, loopEndMeasure: b } = state.playback;
+
+    let start: number | null = null;
+    let end: number | null = null;
+
+    if (a !== null && b !== null) {
+      start = barlineSeconds(Math.min(a, b)) ?? null;
+      end = barlineSeconds(Math.max(a, b)) ?? null;
+    } else if (a !== null) {
+      start = barlineSeconds(a) ?? null;
+    } else if (b !== null) {
+      end = barlineSeconds(b) ?? null;
+    }
+
+    // A degenerate (empty or inverted) region would loop instantly — drop it.
+    if (start !== null && end !== null && start >= end) {
+      start = null;
+      end = null;
+    }
+
+    t.setLoopRegion(start, end);
+  };
+
+  /** Moves the playhead to `seconds` and cues the highlight there, whatever the status. */
+  const seekTo = (seconds: number): void => {
+    if (!ensureLoaded()) return;
+
+    const t = ensureTransport();
+
+    t.seek(seconds);
+    state.playback.positionSeconds = t.positionSeconds();
+    state.playback.status = t.status();
+    state.playback.sounding = soundingAt(t.positionSeconds());
   };
 
   /** Builds the transport (and its audio context) on first use, per the autoplay policy */
@@ -258,6 +351,9 @@ export function createEditorStore(initial: Score = blankScore(), deps: EditorSto
   const stopPlaybackWatch = watch(
     () => state.score,
     () => {
+      performance = null; // the compiled timeline is now stale
+      loaded = null; // and so is whatever the transport is holding
+
       if (transport && state.playback.status !== 'stopped') {
         transport.stop();
         syncPlayback();
@@ -569,12 +665,21 @@ export function createEditorStore(initial: Score = blankScore(), deps: EditorSto
       } else if (state.playback.status === 'paused') {
         t.play();
       } else {
-        const compiled = Compiler.compile(state.score);
+        // Reuse the cached compile if it's still valid (an edit clears it), so
+        // a performance already loaded by a prior seek/loop stays loaded — no
+        // reload, no lost playhead.
+        const compiled = performance ? { value: performance } : Compiler.compile(state.score);
 
         if (!Result.isOk(compiled)) return Result.mapError(compiled);
 
         performance = compiled.value;
-        t.load(compiled.value);
+        ensureLoaded();
+
+        // Resume from wherever a seek left the playhead, not always the top.
+        const startAt = state.playback.positionSeconds;
+
+        if (startAt > 0 && startAt < compiled.value.durationSeconds) t.seek(startAt);
+        applyLoopRegion();
         t.play();
       }
 
@@ -588,17 +693,53 @@ export function createEditorStore(initial: Score = blankScore(), deps: EditorSto
       syncPlayback();
     },
 
-    /** Moves the playhead (seconds); recompiles first if stopped so the target lands on the current score */
+    /** Moves the playhead to `seconds`, cueing the highlight there even while stopped */
     seekPlayback(seconds: number): void {
-      if (!transport) return;
+      seekTo(seconds);
+    },
 
-      transport.seek(seconds);
-      syncPlayback();
+    /** Left-click a bar handle: move the playhead to that barline (a measure start, or the piece end) */
+    seekToMeasure(measureIndex: number): void {
+      const seconds = barlineSeconds(measureIndex);
+
+      if (seconds !== undefined) seekTo(seconds);
     },
 
     setPlaybackLoop(loop: boolean): void {
       state.playback.loop = loop;
       transport?.setLoop(loop);
+    },
+
+    /**
+     * Toggle this measure as the loop-passage start (clears it if already the
+     * start). Setting a start also seeks there, so playback picks up from the
+     * loop's beginning.
+     */
+    toggleLoopStart(measureIndex: number): void {
+      const setting = state.playback.loopStartMeasure !== measureIndex;
+
+      state.playback.loopStartMeasure = setting ? measureIndex : null;
+      applyLoopRegion();
+
+      if (setting) {
+        const seconds = barlineSeconds(measureIndex);
+
+        if (seconds !== undefined) seekTo(seconds);
+      }
+    },
+
+    /** Toggle this measure as the loop-passage end (clears it if already the end) */
+    toggleLoopEnd(measureIndex: number): void {
+      state.playback.loopEndMeasure =
+        state.playback.loopEndMeasure === measureIndex ? null : measureIndex;
+      applyLoopRegion();
+    },
+
+    /** Clears both loop-passage bounds */
+    clearLoopRegion(): void {
+      state.playback.loopStartMeasure = null;
+      state.playback.loopEndMeasure = null;
+      applyLoopRegion();
     },
 
     /** Stops the autosave watcher and tears down audio — call when the store is no longer needed */

@@ -39,6 +39,12 @@ export type Transport = {
   stop(): void;
   seek(seconds: number): void;
   setLoop(loop: boolean): void;
+  /**
+   * An A–B loop region in seconds. Either bound may be null (defaulting to the
+   * piece start/end); setting either turns looping on for the region. Clearing
+   * both leaves only the whole-piece `setLoop` toggle in effect.
+   */
+  setLoopRegion(startSeconds: number | null, endSeconds: number | null): void;
   /** The scheduling step; the timer calls it, and tests can call it directly. */
   tick(): void;
   status(): TransportStatus;
@@ -69,6 +75,8 @@ export const createTransport = (deps: TransportDeps): Transport => {
   let performance: Performance | null = null;
   let status: TransportStatus = 'stopped';
   let loop = false;
+  let loopStart: number | null = null;
+  let loopEnd: number | null = null;
 
   // `origin*` anchor the performance timeline to the audio clock: at audio time
   // `originAudioTime`, the performance is at `originPosition` seconds.
@@ -79,6 +87,17 @@ export const createTransport = (deps: TransportDeps): Transport => {
 
   const events = (): readonly NoteEvent[] => performance?.events ?? [];
   const duration = (): number => performance?.durationSeconds ?? 0;
+
+  /** Whether looping is active, and over what span — the region if set, else the whole piece. */
+  const loopSpan = (): { active: boolean; start: number; end: number } => {
+    const hasRegion = loopStart !== null || loopEnd !== null;
+
+    return {
+      active: hasRegion || loop,
+      start: loopStart ?? 0,
+      end: loopEnd ?? duration(),
+    };
+  };
 
   const rawPosition = (): number =>
     status === 'playing' ? deps.now() - originAudioTime + originPosition : originPosition;
@@ -151,13 +170,20 @@ export const createTransport = (deps: TransportDeps): Transport => {
       loop = next;
     },
 
+    setLoopRegion(start: number | null, end: number | null): void {
+      loopStart = start;
+      loopEnd = end;
+    },
+
     tick(): void {
       if (status !== 'playing' || !performance) return;
 
       const all = performance.events;
-      const windowEnd = rawPosition() + lookahead;
+      const span = loopSpan();
+      // Don't schedule past the loop end — those events belong to the next lap.
+      const scheduleLimit = Math.min(rawPosition() + lookahead, span.active ? span.end : Infinity);
 
-      while (cursor < all.length && all[cursor].startSeconds < windowEnd) {
+      while (cursor < all.length && all[cursor].startSeconds < scheduleLimit) {
         const event = all[cursor];
         const audioStart = originAudioTime + (event.startSeconds - originPosition);
 
@@ -172,12 +198,13 @@ export const createTransport = (deps: TransportDeps): Transport => {
         cursor += 1;
       }
 
-      if (rawPosition() >= performance.durationSeconds && cursor >= all.length) {
-        if (loop) {
-          transport.seek(0); // seeks, reschedules, and reports position itself
-          return;
-        }
+      // Loop back at the region (or piece) end; otherwise stop at the true end.
+      if (span.active && rawPosition() >= span.end) {
+        transport.seek(span.start); // seeks, reschedules, and reports position itself
+        return;
+      }
 
+      if (rawPosition() >= performance.durationSeconds && cursor >= all.length) {
         // Natural end: stop advancing, but let the final notes ring out.
         clearTimer();
         status = 'stopped';
