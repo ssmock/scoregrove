@@ -9,6 +9,9 @@ import { StaffPosition } from '@scoregrove/engraving/StaffPosition';
 export type StaffHit = {
   measureIndex: number;
   staffIndex: number;
+  /** The voice the nearest element belongs to (a staff may carry several) */
+  voice: number;
+  /** Index of the nearest element within its own voice */
   elementIndex: number;
   /** Onset within the measure, as a fraction of a whole note */
   onset: Fraction;
@@ -194,7 +197,12 @@ export const InteractionGeometry = {
 
     if (elementIndex === undefined) return undefined;
 
-    const voiceElements = measures[entry.index]?.contents[staffIndex]?.voices[0]?.elements;
+    // The nearest laid-out element carries its own address, so its voice (and
+    // its index *within* that voice) come straight from it — a staff's several
+    // voices are flattened into one laid-out `elements` list, so a plain index
+    // into that list is not an index into any single voice.
+    const { voice, element: voiceElementIndex } = laidOutMeasure.elements[elementIndex].address;
+    const voiceElements = measures[entry.index]?.contents[staffIndex]?.voices[voice]?.elements;
 
     if (!voiceElements) return undefined;
 
@@ -205,8 +213,9 @@ export const InteractionGeometry = {
     return {
       measureIndex: entry.index,
       staffIndex,
-      elementIndex,
-      onset: InteractionGeometry.onsetOf(voiceElements, elementIndex),
+      voice,
+      elementIndex: voiceElementIndex,
+      onset: InteractionGeometry.onsetOf(voiceElements, voiceElementIndex),
       position: InteractionGeometry.nearestPosition(staffRelativeY),
       ...(timeSignature ? { timeSignature } : {}),
     };

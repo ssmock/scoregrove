@@ -172,6 +172,28 @@ function applyTimeSignature(): void {
       </AppButton>
     </div>
 
+    <div class="pallet__mode" role="group" aria-label="What a note on an occupied beat does">
+      <span class="pallet__mode-label">On a taken beat</span>
+      <div class="pallet__mode-toggle">
+        <AppButton
+          variant="quiet"
+          :pressed="store.state.placementMode === 'chord'"
+          title="Stack a same-duration note as a chord"
+          @click="store.setPlacementMode('chord')"
+        >
+          Chord
+        </AppButton>
+        <AppButton
+          variant="quiet"
+          :pressed="store.state.placementMode === 'voice'"
+          title="Add the note as an independent voice (allows a different rhythm)"
+          @click="store.setPlacementMode('voice')"
+        >
+          Voice
+        </AppButton>
+      </div>
+    </div>
+
     <AppFlyout :open="flyoutKind !== null" :anchor="flyoutAnchor" @close="flyoutKind = null">
       <div class="pallet__durations" role="menu">
         <button
@@ -292,6 +314,23 @@ function applyTimeSignature(): void {
 .pallet__row {
   display: flex;
   gap: var(--space-2);
+}
+
+.pallet__mode {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  margin-top: var(--space-2);
+}
+
+.pallet__mode-label {
+  font-size: var(--text-sm);
+  color: var(--color-text-muted);
+}
+
+.pallet__mode-toggle {
+  display: flex;
+  gap: var(--space-1);
 }
 
 .pallet__durations {

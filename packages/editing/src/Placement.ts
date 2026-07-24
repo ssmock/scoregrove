@@ -534,6 +534,178 @@ const editSoundedElement = (
   return replaceElement(score, address, elements, target.duration, newElement);
 };
 
+/**
+ * How a note landing on an already-occupied beat is resolved: `chord` stacks
+ * it onto the existing note/chord (same duration required), while `voice`
+ * places it as an independent line in another voice — the only way to carry a
+ * different rhythm on the same beat.
+ */
+export type PlacementMode = 'chord' | 'voice';
+
+/**
+ * Drops `spec` into a run of rests starting at `at`, re-decomposing the
+ * leftover rest time on either side so the voice stays exactly full. The core
+ * of an ordinary (non-chord, non-conflicting) placement, shared by the
+ * single-voice path and the voice-diversion path.
+ */
+const placeIntoRests = (
+  score: Score,
+  address: PlacementAddress,
+  spec: ElementSpec,
+  elements: readonly MeasureElement[],
+  at: OnsetLocation,
+): Result<Score> => {
+  const placedDuration = Duration.fractionOfWhole(spec.duration);
+  const placedEnd = Fraction.add(address.onset, placedDuration);
+  const span = findRestSpan(elements, at.index, at.onset, placedEnd);
+
+  if (!span) return Result.invalid('Not enough rest time there for that duration');
+
+  const before = DurationDecomposition.decompose(Fraction.subtract(address.onset, at.onset)).map(
+    (duration) => Rest.of(duration),
+  );
+  const after = DurationDecomposition.decompose(Fraction.subtract(span.end, placedEnd)).map(
+    (duration) => Rest.of(duration),
+  );
+  const placed: MeasureElement =
+    spec.kind === 'note'
+      ? Note.of(spec.pitch, spec.duration, spec.notations ?? {})
+      : Rest.of(spec.duration);
+
+  const newElements = [
+    ...elements.slice(0, at.index),
+    ...before,
+    placed,
+    ...after,
+    ...elements.slice(span.endIndex + 1),
+  ];
+
+  return Result.ok(withVoiceElements(score, address, newElements));
+};
+
+/** Places `spec` into `voiceIndex` if that voice has enough free rest time at the onset; undefined otherwise */
+const tryPlaceInVoice = (
+  score: Score,
+  address: PlacementAddress,
+  spec: ElementSpec,
+  voiceIndex: number,
+): Result<Score> | undefined => {
+  const elements = elementsAt(score, address.measure, address.staff, voiceIndex);
+
+  if (!elements) return undefined;
+
+  const at = locateOnset(elements, address.onset);
+
+  if (!at || at.element.kind !== 'rest') return undefined;
+
+  return placeIntoRests(score, { ...address, voice: voiceIndex }, spec, elements, at);
+};
+
+/** Appends a voice to one staff of one measure */
+const appendVoice = (
+  score: Score,
+  measureIndex: number,
+  staffIndex: number,
+  voice: Voice,
+): Score => ({
+  ...score,
+  measures: NonEmptyArray.of(
+    score.measures.map((measure, index) => {
+      if (index !== measureIndex) return measure;
+
+      return {
+        ...measure,
+        contents: NonEmptyArray.of(
+          measure.contents.map((content, contentIndex) =>
+            contentIndex === staffIndex
+              ? { ...content, voices: NonEmptyArray.of([...content.voices, voice]) }
+              : content,
+          ),
+        ),
+      };
+    }),
+  ),
+});
+
+/**
+ * Places a note as an independent voice: into the first existing voice that's
+ * free (rest) at this onset with room for the duration, or a fresh rest-backed
+ * voice appended to the staff when every voice is busy there. This is what
+ * lets a differently-timed note share a beat — a single voice can't.
+ */
+const placeInAnotherVoice = (
+  score: Score,
+  address: PlacementAddress,
+  spec: ElementSpec,
+): Result<Score> => {
+  const content = score.measures[address.measure]?.contents[address.staff];
+
+  if (!content) return Result.invalid('That position falls outside the measure');
+
+  for (let voiceIndex = 0; voiceIndex < content.voices.length; voiceIndex += 1) {
+    const placed = tryPlaceInVoice(score, address, spec, voiceIndex);
+
+    if (placed) return placed;
+  }
+
+  const time = ContextWalk.walk(score)[address.measure][address.staff].time;
+  const withVoice = appendVoice(
+    score,
+    address.measure,
+    address.staff,
+    Voice.of(RestBacking.wholeMeasureRests(time)),
+  );
+
+  return (
+    tryPlaceInVoice(withVoice, address, spec, content.voices.length) ??
+    Result.invalid('Not enough room in the measure for that duration')
+  );
+};
+
+/** A voice holding nothing but rests — a secondary one in this state is redundant */
+const isRestOnly = (voice: Voice): boolean =>
+  voice.elements.every((element) => element.kind === 'rest');
+
+/**
+ * Drops any secondary voice of one staff that's been left as nothing but rests,
+ * so erasing the last note of an added voice removes the voice too rather than
+ * stranding a redundant rest over the primary line. Voice 0 always stays — a
+ * staff keeps a primary voice even when it falls silent.
+ */
+const pruneEmptySecondaryVoices = (
+  score: Score,
+  measureIndex: number,
+  staffIndex: number,
+): Score => {
+  const content = score.measures[measureIndex]?.contents[staffIndex];
+
+  if (!content) return score;
+
+  const kept = content.voices.filter((voice, index) => index === 0 || !isRestOnly(voice));
+
+  if (kept.length === content.voices.length) return score;
+
+  return {
+    ...score,
+    measures: NonEmptyArray.of(
+      score.measures.map((measure, index) =>
+        index === measureIndex
+          ? {
+              ...measure,
+              contents: NonEmptyArray.of(
+                measure.contents.map((existing, contentIndex) =>
+                  contentIndex === staffIndex
+                    ? { ...existing, voices: NonEmptyArray.of(kept) }
+                    : existing,
+                ),
+              ),
+            }
+          : measure,
+      ),
+    ),
+  };
+};
+
 export const Placement = {
   /**
    * Places a note or rest at a moment in time, consuming rest time there.
@@ -549,8 +721,18 @@ export const Placement = {
    *
    * Placing past the end of the piece (auto-appending measures) isn't
    * supported yet — a known gap, not a silent behavior change.
+   *
+   * `mode` decides what a note landing on an occupied beat does: `chord`
+   * (default) stacks it onto a same-duration note/chord; `voice` places it as
+   * an independent line in another voice instead, which is the only way to
+   * carry a different rhythm on the same beat. Rests ignore `mode`.
    */
-  place(score: Score, address: PlacementAddress, spec: ElementSpec): Result<Score> {
+  place(
+    score: Score,
+    address: PlacementAddress,
+    spec: ElementSpec,
+    mode: PlacementMode = 'chord',
+  ): Result<Score> {
     const located = locateVoice(score, address);
 
     if (!Result.isOk(located)) return Result.mapError(located);
@@ -561,6 +743,10 @@ export const Placement = {
     if (!at) return Result.invalid('That position falls outside the measure');
 
     if (at.element.kind !== 'rest') {
+      if (spec.kind === 'note' && mode === 'voice') {
+        return placeInAnotherVoice(score, address, spec);
+      }
+
       if (
         spec.kind === 'note' &&
         Fraction.equals(at.onset, address.onset) &&
@@ -573,32 +759,7 @@ export const Placement = {
       return Result.invalid('That time is already occupied');
     }
 
-    const placedDuration = Duration.fractionOfWhole(spec.duration);
-    const placedEnd = Fraction.add(address.onset, placedDuration);
-    const span = findRestSpan(elements, at.index, at.onset, placedEnd);
-
-    if (!span) return Result.invalid('Not enough rest time there for that duration');
-
-    const before = DurationDecomposition.decompose(Fraction.subtract(address.onset, at.onset)).map(
-      (duration) => Rest.of(duration),
-    );
-    const after = DurationDecomposition.decompose(Fraction.subtract(span.end, placedEnd)).map(
-      (duration) => Rest.of(duration),
-    );
-    const placed: MeasureElement =
-      spec.kind === 'note'
-        ? Note.of(spec.pitch, spec.duration, spec.notations ?? {})
-        : Rest.of(spec.duration);
-
-    const newElements = [
-      ...elements.slice(0, at.index),
-      ...before,
-      placed,
-      ...after,
-      ...elements.slice(span.endIndex + 1),
-    ];
-
-    return Result.ok(withVoiceElements(score, address, newElements));
+    return placeIntoRests(score, address, spec, elements, at);
   },
 
   /**
@@ -730,7 +891,13 @@ export const Placement = {
       ...workingElements.slice(endIndex + 1),
     ];
 
-    return Result.ok(withVoiceElements(workingScore, address, newElements));
+    return Result.ok(
+      pruneEmptySecondaryVoices(
+        withVoiceElements(workingScore, address, newElements),
+        address.measure,
+        address.staff,
+      ),
+    );
   },
 
   /**

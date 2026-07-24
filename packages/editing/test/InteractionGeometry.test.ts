@@ -1,12 +1,21 @@
 import { describe, expect, it } from 'vitest';
 import { Fraction } from '@scoregrove/domain/Fraction';
 import { Fixtures } from '@scoregrove/engraving/Fixtures';
+import type { LaidOutElement } from '@scoregrove/engraving/LayoutTree';
+import { StaffPosition } from '@scoregrove/engraving/StaffPosition';
 import { SystemLayout } from '@scoregrove/engraving/SystemLayout';
 import { InteractionGeometry } from '../src/InteractionGeometry';
 
 const melody = Fixtures.monophonicMelody();
 const system = SystemLayout.unbroken(melody);
 const firstMeasure = system.measures[0].staves[0];
+
+const layoutY = (element: LaidOutElement): number => {
+  if (element.kind === 'note') return StaffPosition.y(element.position);
+  if (element.kind === 'chord') return StaffPosition.y(element.tones[0].position);
+
+  return element.y;
+};
 
 describe('InteractionGeometry.nearestPosition', () => {
   it('inverts StaffPosition.y at the reference lines', () => {
@@ -101,6 +110,29 @@ describe('InteractionGeometry.locate', () => {
 
     expect(hit).toMatchObject({ measureIndex: 0, staffIndex: 0, elementIndex: 1 });
     expect(hit?.onset).toEqual(Fraction.zero());
+  });
+
+  it('resolves a hit to the voice the element belongs to, not always voice 0', () => {
+    // The two-hand fixture's right-hand staff carries two voices; a click on a
+    // second-voice element must report voice 1 and that element's index within
+    // voice 1 — a staff's voices are flattened into one laid-out list, so a
+    // plain list index would be neither.
+    const twoVoice = Fixtures.twoStaffMultiVoice();
+    const twoVoiceSystem = SystemLayout.unbroken(twoVoice);
+    const rhStaff = twoVoiceSystem.measures[0].staves[0];
+    const target = rhStaff.elements.find((element) => element.address.voice === 1);
+
+    if (!target) throw new Error('fixture no longer has a second voice to test');
+
+    const hit = InteractionGeometry.locate({
+      system: twoVoiceSystem,
+      measures: twoVoice.measures,
+      x: target.x,
+      y: (twoVoiceSystem.staffYs[0] ?? 0) + layoutY(target),
+    });
+
+    expect(hit?.voice).toBe(1);
+    expect(hit?.elementIndex).toBe(target.address.element);
   });
 
   it('locates a later measure by x', () => {

@@ -112,7 +112,7 @@ function realAddress(hit: StaffHit): ScoreAddress {
   return {
     measure: hit.measureIndex,
     staff: projection.value.staffMap[hit.staffIndex],
-    voice: 0,
+    voice: hit.voice,
     element: hit.elementIndex,
   };
 }
@@ -147,7 +147,7 @@ function eraseAt(hit: StaffHit): void {
 function hoveredAddress(hit: StaffHit): ScoreAddress | undefined {
   const staff = projection.value.staffMap[hit.staffIndex];
 
-  return store.resolveAddress({ measure: hit.measureIndex, staff, voice: 0 }, hit.onset);
+  return store.resolveAddress({ measure: hit.measureIndex, staff, voice: hit.voice }, hit.onset);
 }
 
 /** The hotkey counterpart to `eraseAt`, re-resolving first since the hover it acts on may be stale */
@@ -218,7 +218,7 @@ function place(hit: StaffHit): void {
   const address = {
     measure: hit.measureIndex,
     staff: projection.value.staffMap[hit.staffIndex],
-    voice: 0,
+    voice: hit.voice,
     onset: hit.onset,
   };
 
@@ -246,7 +246,8 @@ function place(hit: StaffHit): void {
  */
 function tieClickAt(hit: StaffHit): void {
   const elements =
-    projected.value.measures[hit.measureIndex]?.contents[hit.staffIndex]?.voices[0]?.elements;
+    projected.value.measures[hit.measureIndex]?.contents[hit.staffIndex]?.voices[hit.voice]
+      ?.elements;
   const target = elements?.[hit.elementIndex];
 
   if (target?.kind !== 'note' && target?.kind !== 'chord') return;
@@ -298,14 +299,15 @@ function onContextmenu({
 
   const staffIndex = projection.value.staffMap[hit.staffIndex];
   const elements =
-    projected.value.measures[hit.measureIndex]?.contents[hit.staffIndex]?.voices[0]?.elements;
+    projected.value.measures[hit.measureIndex]?.contents[hit.staffIndex]?.voices[hit.voice]
+      ?.elements;
   const target = elements?.[hit.elementIndex];
 
   if (target?.kind !== 'note' && target?.kind !== 'chord') return;
 
   flyout.value = {
     at: { x: clientX, y: clientY },
-    location: { measure: hit.measureIndex, staff: staffIndex, voice: 0 },
+    location: { measure: hit.measureIndex, staff: staffIndex, voice: hit.voice },
     onset: hit.onset,
     pitch: target.kind === 'chord' ? pitchAt(hit) : null,
   };

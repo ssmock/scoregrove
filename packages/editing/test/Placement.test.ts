@@ -4,7 +4,7 @@ import { Clef } from '@scoregrove/domain/Clef';
 import { Duration, NoteValue } from '@scoregrove/domain/Duration';
 import { DynamicMark } from '@scoregrove/domain/Dynamic';
 import { Fraction } from '@scoregrove/domain/Fraction';
-import { StaffContent, type Measure } from '@scoregrove/domain/Measure';
+import { StaffContent, Voice, type Measure } from '@scoregrove/domain/Measure';
 import {
   Chord,
   DynamicElement,
@@ -1378,5 +1378,169 @@ describe('Placement.removeTie', () => {
     const score = scoreWith([first, second]);
 
     expectInvalid(Placement.removeTie(score, addressAt(0), c4));
+  });
+});
+
+describe('Placement.place — voice mode', () => {
+  const dottedHalf = Duration.of(NoteValue.Half, { dots: 1 });
+
+  const twoVoiceScore = (v0: MeasureElement[], v1: MeasureElement[]) =>
+    buildScore({
+      time: fourFour,
+      staves: [Staff.of(Clef.Treble)],
+      measures: [
+        {
+          contents: NonEmptyArray.of([
+            StaffContent.of(
+              NonEmptyArray.of([Voice.of(NonEmptyArray.of(v0)), Voice.of(NonEmptyArray.of(v1))]),
+            ),
+          ]),
+        },
+      ],
+    });
+
+  const voicesOf = (score: ReturnType<typeof scoreWith>) => score.measures[0].contents[0].voices;
+
+  it('drops a different-duration note onto an occupied beat into a new voice', () => {
+    const score = scoreWith([Note.of(c4, whole)]);
+
+    const placed = expectOk(
+      Placement.place(
+        score,
+        { measure: 0, staff: 0, voice: 0, onset: Fraction.zero() },
+        { kind: 'note', pitch: g4, duration: quarter },
+        'voice',
+      ),
+    );
+
+    expectScoreCheckOk(placed);
+    const voices = voicesOf(placed);
+    expect(voices).toHaveLength(2);
+    expect(voices[0].elements).toEqual([Note.of(c4, whole)]); // untouched
+    expect(voices[1].elements).toEqual([Note.of(g4, quarter), Rest.of(dottedHalf)]);
+  });
+
+  it('makes a second voice even when the durations match (rather than a chord)', () => {
+    const score = scoreWith([Note.of(c4, quarter), Rest.of(dottedHalf)]);
+
+    const placed = expectOk(
+      Placement.place(
+        score,
+        { measure: 0, staff: 0, voice: 0, onset: Fraction.zero() },
+        { kind: 'note', pitch: g4, duration: quarter },
+        'voice',
+      ),
+    );
+
+    expectScoreCheckOk(placed);
+    const voices = voicesOf(placed);
+    expect(voices).toHaveLength(2);
+    expect(voices[0].elements).toEqual([Note.of(c4, quarter), Rest.of(dottedHalf)]);
+    expect(voices[1].elements).toEqual([Note.of(g4, quarter), Rest.of(dottedHalf)]);
+  });
+
+  it('reuses an existing voice that is free at the onset instead of adding another', () => {
+    const score = twoVoiceScore([Note.of(c4, whole)], [Rest.of(whole)]);
+
+    const placed = expectOk(
+      Placement.place(
+        score,
+        { measure: 0, staff: 0, voice: 0, onset: Fraction.zero() },
+        { kind: 'note', pitch: g4, duration: quarter },
+        'voice',
+      ),
+    );
+
+    expectScoreCheckOk(placed);
+    const voices = voicesOf(placed);
+    expect(voices).toHaveLength(2); // no third voice
+    expect(voices[1].elements).toEqual([Note.of(g4, quarter), Rest.of(dottedHalf)]);
+  });
+
+  it('places on a free beat in voice 0 as usual (mode only matters when occupied)', () => {
+    const score = scoreWith([Rest.of(whole)]);
+
+    const placed = expectOk(
+      Placement.place(
+        score,
+        { measure: 0, staff: 0, voice: 0, onset: Fraction.zero() },
+        { kind: 'note', pitch: g4, duration: quarter },
+        'voice',
+      ),
+    );
+
+    expect(voicesOf(placed)).toHaveLength(1);
+    expect(voicesOf(placed)[0].elements).toEqual([Note.of(g4, quarter), Rest.of(dottedHalf)]);
+  });
+
+  it('defaults to chord mode when no mode is given', () => {
+    const score = scoreWith([Note.of(g4, quarter), Rest.of(dottedHalf)]);
+
+    const placed = expectOk(
+      Placement.place(
+        score,
+        { measure: 0, staff: 0, voice: 0, onset: Fraction.zero() },
+        { kind: 'note', pitch: b4, duration: quarter },
+      ),
+    );
+
+    const voices = voicesOf(placed);
+    expect(voices).toHaveLength(1); // a chord, not a second voice
+    expect(voices[0].elements[0].kind).toBe('chord');
+  });
+});
+
+describe('Placement.erase — voice pruning', () => {
+  const dottedHalf = Duration.of(NoteValue.Half, { dots: 1 });
+
+  const twoVoiceScore = (v0: MeasureElement[], v1: MeasureElement[]) =>
+    buildScore({
+      time: fourFour,
+      staves: [Staff.of(Clef.Treble)],
+      measures: [
+        {
+          contents: NonEmptyArray.of([
+            StaffContent.of(
+              NonEmptyArray.of([Voice.of(NonEmptyArray.of(v0)), Voice.of(NonEmptyArray.of(v1))]),
+            ),
+          ]),
+        },
+      ],
+    });
+
+  it('removes a secondary voice once its last note is erased', () => {
+    // Voice 1 holds a single eighth note then rests; erasing the note leaves it
+    // all rests, so the whole voice should go.
+    const score = twoVoiceScore([Note.of(c4, whole)], [Note.of(g4, quarter), Rest.of(dottedHalf)]);
+
+    const erased = expectOk(Placement.erase(score, { measure: 0, staff: 0, voice: 1, element: 0 }));
+
+    expectScoreCheckOk(erased);
+    const voices = erased.measures[0].contents[0].voices;
+    expect(voices).toHaveLength(1); // secondary voice pruned
+    expect(voices[0].elements).toEqual([Note.of(c4, whole)]); // primary untouched
+  });
+
+  it('keeps the primary voice even when erasing leaves it all rests', () => {
+    const score = twoVoiceScore([Note.of(c4, quarter), Rest.of(dottedHalf)], [Note.of(g4, whole)]);
+
+    const erased = expectOk(Placement.erase(score, { measure: 0, staff: 0, voice: 0, element: 0 }));
+
+    expectScoreCheckOk(erased);
+    const voices = erased.measures[0].contents[0].voices;
+    expect(voices).toHaveLength(2); // voice 0 stays (primary), voice 1 still sounds
+    expect(voices[0].elements.every((element) => element.kind === 'rest')).toBe(true);
+  });
+
+  it('leaves a secondary voice that still has notes alone', () => {
+    const score = twoVoiceScore(
+      [Note.of(c4, whole)],
+      [Note.of(g4, quarter), Note.of(b4, quarter), Rest.of(half)],
+    );
+
+    const erased = expectOk(Placement.erase(score, { measure: 0, staff: 0, voice: 1, element: 0 }));
+
+    expectScoreCheckOk(erased);
+    expect(erased.measures[0].contents[0].voices).toHaveLength(2); // still has a note, kept
   });
 });

@@ -13,7 +13,12 @@ import { Staff } from '@scoregrove/domain/Staff';
 import { TimeSignature } from '@scoregrove/domain/TimeSignature';
 import { DurationOps } from '@scoregrove/editing/DurationOps';
 import { MeasureOps } from '@scoregrove/editing/MeasureOps';
-import { Placement, type ElementSpec, type PlacementAddress } from '@scoregrove/editing/Placement';
+import {
+  Placement,
+  type ElementSpec,
+  type PlacementAddress,
+  type PlacementMode,
+} from '@scoregrove/editing/Placement';
 import { RestBacking } from '@scoregrove/editing/RestBacking';
 import { StaffOps } from '@scoregrove/editing/StaffOps';
 import { TimeSignatureOps } from '@scoregrove/editing/TimeSignatureOps';
@@ -105,6 +110,12 @@ type EditorState = {
    * click right now."
    */
   activeTool: ToolConfig | null;
+  /**
+   * How the note tool resolves a beat that's already taken: `chord` stacks a
+   * same-duration tone, `voice` drops the note into an independent voice (the
+   * only way to carry a different rhythm on the same beat).
+   */
+  placementMode: PlacementMode;
   eraserMode: EraserMode | null;
   /** The tie pallet tool (or the right-click flyout's "start tie") is selected */
   tieMode: boolean;
@@ -170,6 +181,7 @@ export function createEditorStore(initial: Score = blankScore(), deps: EditorSto
     flow: 'vertical',
     hiddenStaves: new Set(),
     activeTool: null,
+    placementMode: 'chord',
     eraserMode: null,
     tieMode: false,
     pendingTie: null,
@@ -376,7 +388,12 @@ export function createEditorStore(initial: Score = blankScore(), deps: EditorSto
     state: readonly(state) as DeepReadonly<EditorState>,
 
     place(address: PlacementAddress, spec: ElementSpec): Result<Score> {
-      return commitResult(Placement.place(state.score, address, spec));
+      return commitResult(Placement.place(state.score, address, spec, state.placementMode));
+    },
+
+    /** Chooses whether a note on an occupied beat stacks as a chord or starts a new voice */
+    setPlacementMode(mode: PlacementMode): void {
+      state.placementMode = mode;
     },
 
     /**
