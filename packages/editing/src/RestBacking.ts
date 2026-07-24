@@ -33,15 +33,16 @@ export const RestBacking = {
 
   /**
    * A fresh rest-backed measure: one whole-rest-filled StaffContent per
-   * staff, each under that staff's own clef. Carries no key/time/tempo
-   * change, barlines, or navigation of its own — callers merge those in
-   * separately when a specific measure needs them.
+   * staff. No clef is stamped — a fresh measure isn't *changing* the clef, so
+   * (like `MeasureOps.addMeasure`) it leaves `StaffContent.clef` unset and lets
+   * `ContextWalk` carry each staff's own clef forward; stamping the starting
+   * clef here would shadow the staff's clef and go stale when it's changed.
+   * Carries no key/time/tempo change, barlines, or navigation of its own —
+   * callers merge those in separately when a specific measure needs them.
    */
   emptyMeasure(time: TimeSignature, staves: readonly Staff[]): Measure {
     return {
-      contents: NonEmptyArray.of(
-        staves.map((staff) => RestBacking.emptyStaffContent(time, staff.clef)),
-      ),
+      contents: NonEmptyArray.of(staves.map(() => RestBacking.emptyStaffContent(time))),
     };
   },
 };

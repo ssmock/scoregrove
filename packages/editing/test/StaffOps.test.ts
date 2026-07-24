@@ -5,6 +5,9 @@ import { PositiveInteger } from '@scoregrove/domain/PositiveInteger';
 import { Result } from '@scoregrove/domain/Result';
 import { Staff } from '@scoregrove/domain/Staff';
 import { BeatUnit, type TimeSignature } from '@scoregrove/domain/TimeSignature';
+import { StaffContent } from '@scoregrove/domain/Measure';
+import { NonEmptyArray } from '@scoregrove/domain/NonEmptyArray';
+import { ContextWalk } from '@scoregrove/engraving/ContextWalk';
 import { RestBacking } from '../src/RestBacking';
 import { StaffOps } from '../src/StaffOps';
 import { buildScore, expectInvalid, expectOk, expectScoreCheckOk } from './helpers';
@@ -32,11 +35,13 @@ describe('StaffOps.addStaff', () => {
 
     withBass.measures.forEach((measure) => {
       expect(measure.contents).toHaveLength(2);
-      expect(measure.contents[1].clef).toBe(Clef.Bass);
+      // No clef stamp — the new staff's own clef governs via ContextWalk.
+      expect(measure.contents[1].clef).toBeUndefined();
       expect(measure.contents[1].voices[0].elements).toEqual(
         RestBacking.wholeMeasureRests(fourFour),
       );
     });
+    expect(ContextWalk.walk(withBass)[0][1].clef).toBe(Clef.Bass);
   });
 
   it('back-fills using the time signature actually in force at each measure', () => {
@@ -151,6 +156,42 @@ describe('StaffOps.updateStaff', () => {
     const updated = expectOk(StaffOps.updateStaff(score, 0, Clef.Alto));
 
     expect(updated.measures).toEqual(score.measures);
+  });
+
+  it('makes the new clef take effect in what actually renders', () => {
+    const staves = [Staff.of(Clef.Treble)];
+    const score = buildScore({
+      time: fourFour,
+      staves,
+      measures: [RestBacking.emptyMeasure(fourFour, staves)],
+    });
+
+    const updated = expectOk(StaffOps.updateStaff(score, 0, Clef.Bass));
+
+    expect(ContextWalk.walk(updated)[0][0].clef).toBe(Clef.Bass);
+  });
+
+  it('heals a stale first-measure clef stamp so the new clef wins', () => {
+    // A score built before empty measures stopped stamping their clef: the
+    // first measure carries an explicit Treble that would otherwise shadow the
+    // staff's clef forever ("only treble ever appears").
+    const staves = [Staff.of(Clef.Treble)];
+    const score = buildScore({
+      time: fourFour,
+      staves,
+      measures: [
+        {
+          contents: NonEmptyArray.of([
+            StaffContent.singleVoice(RestBacking.wholeMeasureRests(fourFour), Clef.Treble),
+          ]),
+        },
+      ],
+    });
+
+    const updated = expectOk(StaffOps.updateStaff(score, 0, Clef.Bass));
+
+    expect(updated.measures[0].contents[0].clef).toBeUndefined();
+    expect(ContextWalk.walk(updated)[0][0].clef).toBe(Clef.Bass);
   });
 
   it('refuses an out-of-range index', () => {

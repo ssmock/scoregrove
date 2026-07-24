@@ -8,6 +8,7 @@ import { PitchLetter } from '@scoregrove/domain/Pitch';
 import { PositiveInteger } from '@scoregrove/domain/PositiveInteger';
 import { Staff } from '@scoregrove/domain/Staff';
 import { BeatUnit, TimeSignature } from '@scoregrove/domain/TimeSignature';
+import { ContextWalk } from '@scoregrove/engraving/ContextWalk';
 import { RestBacking } from '../src/RestBacking';
 import { TimeSignatureOps } from '../src/TimeSignatureOps';
 import { buildScore, expectInvalid, expectOk, expectScoreCheckOk, pitch } from './helpers';
@@ -35,7 +36,7 @@ describe('TimeSignatureOps.setTimeSignature', () => {
     );
   });
 
-  it('preserves each staff’s own clef', () => {
+  it('leaves each staff’s clef intact (it lives on the staff, not the content)', () => {
     const staves = [Staff.of(Clef.Treble), Staff.of(Clef.Bass)];
     const score = buildScore({
       time: fourFour,
@@ -45,7 +46,9 @@ describe('TimeSignatureOps.setTimeSignature', () => {
 
     const changed = expectOk(TimeSignatureOps.setTimeSignature(score, 0, threeFour));
 
-    expect(changed.measures[0].contents[1].clef).toBe(Clef.Bass);
+    // No clef stamp is introduced; the bass staff still renders bass via ContextWalk.
+    expect(changed.measures[0].contents[1].clef).toBeUndefined();
+    expect(ContextWalk.walk(changed)[0][1].clef).toBe(Clef.Bass);
   });
 
   it('resizes the following measures that inherit the change, not just this one', () => {

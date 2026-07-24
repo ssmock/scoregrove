@@ -52,14 +52,18 @@ describe('RestBacking.emptyStaffContent', () => {
 });
 
 describe('RestBacking.emptyMeasure', () => {
-  it('gives every staff its own rest-backed content under its own clef', () => {
+  it('gives every staff its own rest-backed content, leaving the clef to the staff', () => {
     const time = timeOf(4, BeatUnit.Quarter);
     const staves = [Staff.of(Clef.Treble), Staff.of(Clef.Bass)];
     const measure = RestBacking.emptyMeasure(time, staves);
 
     expect(measure.contents).toHaveLength(2);
-    expect(measure.contents[0].clef).toBe(Clef.Treble);
-    expect(measure.contents[1].clef).toBe(Clef.Bass);
+    // No clef change is stamped — a fresh measure isn't changing the clef, so
+    // each staff's own clef governs via ContextWalk (and stays right when the
+    // staff clef is later changed).
+    expect(measure.contents[0].clef).toBeUndefined();
+    expect(measure.contents[1].clef).toBeUndefined();
+    expect(measure.contents[0].voices[0].elements).toEqual(RestBacking.wholeMeasureRests(time));
   });
 
   it('produces a score that passes Score.check on its own', () => {
