@@ -10,20 +10,18 @@ import AppFlyout from '../ui/AppFlyout.vue';
 import AppSelect from '../ui/AppSelect.vue';
 import AppTextField from '../ui/AppTextField.vue';
 import MusicIcon from '../ui/MusicIcon.vue';
+import SegmentedControl from '../ui/SegmentedControl.vue';
 import SidebarSection from '../ui/SidebarSection.vue';
-import { sameToolConfig, type EraserMode, type ToolConfig } from '../store/editorStore';
+import { type EraserMode } from '../store/editorStore';
 import { useEditorStore } from '../store/useEditorStore';
-import HotkeysDialog from './HotkeysDialog.vue';
 import StaffDialog from './StaffDialog.vue';
 
 /**
- * Note/rest pick, then a duration flyout, then the config is active (and
- * promoted into recents) — the two-step interaction TODO-UX describes. The
- * time signature tool is single-click instead: picking it immediately
- * selects common time as a sensible default, and its own flyout opens
- * alongside for keying in a different beats/unit. Recents and the eraser
- * modes live here too, since they're all "what will placing/clicking do
- * next" state.
+ * The note-input pallet, laid out as a compact tool toolbar (after MuseScore's
+ * and Flat's note-input toolbars): what to place (note/rest) and its duration
+ * are always visible rather than hidden behind a flyout, so the active tool is
+ * legible at a glance; mutually-exclusive choices are segmented controls. The
+ * time signature still opens a small form (it needs numbers keyed in).
  */
 const store = useEditorStore();
 
@@ -46,22 +44,74 @@ const beatUnitOptions = [
   { value: BeatUnit.ThirtySecond, label: 'Thirty-second (32)' },
 ];
 
-const flyoutKind = ref<'note' | 'rest' | null>(null);
+const durationNames: Record<string, string> = {
+  Whole: 'Whole',
+  Half: 'Half',
+  Quarter: 'Quarter',
+  Eighth: 'Eighth',
+  Sixteenth: '16th',
+  ThirtySecond: '32nd',
+  SixtyFourth: '64th',
+};
+
 const staffDialogOpen = ref(false);
-const hotkeysDialogOpen = ref(false);
 const timeSigFlyoutOpen = ref(false);
 const draftBeats = ref('4');
 const draftUnit = ref<BeatUnit>(BeatUnit.Quarter);
 const timeSigError = ref<string | undefined>(undefined);
-const noteButton = ref<InstanceType<typeof AppButton> | null>(null);
-const restButton = ref<InstanceType<typeof AppButton> | null>(null);
 const timeSigButton = ref<InstanceType<typeof AppButton> | null>(null);
 
-const flyoutAnchor = computed(() => {
-  if (flyoutKind.value === 'note') return noteButton.value?.rootEl ?? null;
-  if (flyoutKind.value === 'rest') return restButton.value?.rootEl ?? null;
+/** The active note/rest tool's kind and duration, or null when the active tool is neither (a time signature, or nothing) */
+const activeKind = computed<'note' | 'rest' | null>(() => {
+  const tool = store.state.activeTool;
 
-  return null;
+  return tool && (tool.kind === 'note' || tool.kind === 'rest') ? tool.kind : null;
+});
+
+const activeDuration = computed<NoteValue | null>(() => {
+  const tool = store.state.activeTool;
+
+  return tool && (tool.kind === 'note' || tool.kind === 'rest') ? tool.duration.noteValue : null;
+});
+
+const timeSigLabel = computed(() =>
+  store.state.activeTool?.kind === 'timeSignature'
+    ? TimeSignature.format(store.state.activeTool.time)
+    : 'Time',
+);
+
+/**
+ * A one-line description of what clicking the staff does right now, for the
+ * persistent help line under the tools. Always returns something (the line's
+ * space is reserved either way, so it never shifts the layout).
+ */
+const helpText = computed<string>(() => {
+  const state = store.state;
+
+  if (state.tieMode) {
+    return state.pendingTie
+      ? 'Click the next note to close the tie.'
+      : 'Click a note to start a tie.';
+  }
+
+  if (state.eraserMode === 'element') return 'Click a note or rest to erase it.';
+  if (state.eraserMode === 'bar') return 'Click any bar to clear it to rests.';
+
+  const tool = state.activeTool;
+
+  if (!tool) return 'Pick a note or rest above, then click the staff to place it.';
+  if (tool.kind === 'timeSignature') return 'Click a bar to set its time signature.';
+
+  const duration = durationNames[tool.duration.noteValue] ?? tool.duration.noteValue;
+
+  if (tool.kind === 'rest') return `${duration} rest — click the staff to place it.`;
+
+  const stacking =
+    state.placementMode === 'voice'
+      ? 'a note on a taken beat starts a new voice'
+      : 'a note on a taken beat joins it as a chord';
+
+  return `${duration} note — click the staff to place it; ${stacking}.`;
 });
 
 /**
@@ -73,29 +123,30 @@ const flyoutAnchor = computed(() => {
 const glyphFor = (kind: 'note' | 'rest', noteValue: NoteValue): GlyphName =>
   kind === 'note' ? Glyphs.forNoteIcon(noteValue) : Glyphs.forRest(noteValue);
 
-function toggleFlyout(kind: 'note' | 'rest'): void {
-  flyoutKind.value = flyoutKind.value === kind ? null : kind;
+/** Picks the tool's kind, keeping the current duration (or a quarter to start) */
+function pickKind(kind: string): void {
+  store.selectTool({
+    kind: kind as 'note' | 'rest',
+    duration: Duration.of(activeDuration.value ?? NoteValue.Quarter),
+  });
 }
 
+/** Picks the tool's duration, keeping the current kind (or a note to start) */
 function pickDuration(noteValue: NoteValue): void {
-  if (!flyoutKind.value) return;
-
-  const config: ToolConfig = { kind: flyoutKind.value, duration: Duration.of(noteValue) };
-
-  store.selectTool(config);
-  flyoutKind.value = null;
+  store.selectTool({ kind: activeKind.value ?? 'note', duration: Duration.of(noteValue) });
 }
 
-function pickEraser(mode: EraserMode): void {
-  store.setEraserMode(store.state.eraserMode === mode ? null : mode);
+function toggleEraser(mode: string): void {
+  const next = mode as EraserMode;
+
+  store.setEraserMode(store.state.eraserMode === next ? null : next);
 }
 
 /**
- * Picks up the tool button's own click: closes the flyout if it's already
- * open, otherwise opens it, pre-filled from the current active tool if it's
- * already a time signature, or common time (the default) if not — selecting
- * common time immediately, exactly like clicking Tie or an eraser button
- * takes effect right away rather than waiting on a flyout choice.
+ * Opens the time signature form, pre-filled from the active tool if it's
+ * already a time signature, or common time (the default) otherwise — selecting
+ * common time immediately, the same way clicking a note tool takes effect at
+ * once rather than waiting on the form.
  */
 function toggleTimeSigFlyout(): void {
   if (timeSigFlyoutOpen.value) {
@@ -136,78 +187,99 @@ function applyTimeSignature(): void {
 </script>
 
 <template>
-  <SidebarSection heading="Pallet" class="pallet">
-    <div class="pallet__row">
-      <AppButton
-        ref="noteButton"
-        :pressed="flyoutKind === 'note'"
-        aria-haspopup="true"
-        :aria-expanded="flyoutKind === 'note'"
-        @click="toggleFlyout('note')"
-      >
-        <template #icon><MusicIcon glyph="noteheadBlack" :size="18" /></template>
-        Note
-      </AppButton>
-      <AppButton
-        ref="restButton"
-        :pressed="flyoutKind === 'rest'"
-        aria-haspopup="true"
-        :aria-expanded="flyoutKind === 'rest'"
-        @click="toggleFlyout('rest')"
-      >
-        <template #icon><MusicIcon glyph="restQuarter" :size="18" /></template>
-        Rest
-      </AppButton>
-      <AppButton :pressed="store.state.tieMode" @click="store.setTieMode(!store.state.tieMode)">
-        Tie
-      </AppButton>
-      <AppButton
-        ref="timeSigButton"
-        :pressed="store.state.activeTool?.kind === 'timeSignature'"
-        aria-haspopup="true"
-        :aria-expanded="timeSigFlyoutOpen"
-        @click="toggleTimeSigFlyout"
-      >
-        Time Sig
-      </AppButton>
-    </div>
+  <div class="pallet">
+    <SidebarSection heading="Notes">
+      <SegmentedControl
+        stretch
+        aria-label="Place a note or a rest"
+        :options="[
+          { value: 'note', label: 'Note', glyph: 'noteheadBlack' },
+          { value: 'rest', label: 'Rest', glyph: 'restQuarter' },
+        ]"
+        :model-value="activeKind"
+        @update:model-value="pickKind"
+      />
 
-    <div class="pallet__mode" role="group" aria-label="What a note on an occupied beat does">
-      <span class="pallet__mode-label">On a taken beat</span>
-      <div class="pallet__mode-toggle">
-        <AppButton
-          variant="quiet"
-          :pressed="store.state.placementMode === 'chord'"
-          title="Stack a same-duration note as a chord"
-          @click="store.setPlacementMode('chord')"
-        >
-          Chord
-        </AppButton>
-        <AppButton
-          variant="quiet"
-          :pressed="store.state.placementMode === 'voice'"
-          title="Add the note as an independent voice (allows a different rhythm)"
-          @click="store.setPlacementMode('voice')"
-        >
-          Voice
-        </AppButton>
-      </div>
-    </div>
-
-    <AppFlyout :open="flyoutKind !== null" :anchor="flyoutAnchor" @close="flyoutKind = null">
-      <div class="pallet__durations" role="menu">
+      <div class="pallet__durations" role="group" aria-label="Duration">
         <button
           v-for="noteValue in noteValues"
           :key="noteValue"
           type="button"
-          class="pallet__duration-option"
-          role="menuitem"
+          class="pallet__duration"
+          :class="{ 'pallet__duration--active': activeDuration === noteValue }"
+          :aria-pressed="activeDuration === noteValue"
+          :title="`${durationNames[noteValue] ?? noteValue} ${activeKind ?? 'note'}`"
           @click="pickDuration(noteValue)"
         >
-          <MusicIcon :glyph="glyphFor(flyoutKind ?? 'note', noteValue)" :size="22" />
+          <MusicIcon :glyph="glyphFor(activeKind ?? 'note', noteValue)" :size="20" />
         </button>
       </div>
-    </AppFlyout>
+
+      <div class="pallet__inline">
+        <SegmentedControl
+          quiet
+          class="pallet__grow"
+          aria-label="What a note on an occupied beat does"
+          :options="[
+            { value: 'chord', label: 'Chord', title: 'Stack a same-duration note as a chord' },
+            {
+              value: 'voice',
+              label: 'Voice',
+              title: 'Add the note as an independent voice (allows a different rhythm)',
+            },
+          ]"
+          :model-value="store.state.placementMode"
+          @update:model-value="(mode) => store.setPlacementMode(mode as 'chord' | 'voice')"
+        />
+        <AppButton
+          :pressed="store.state.tieMode"
+          title="Tie two notes of the same pitch"
+          @click="store.setTieMode(!store.state.tieMode)"
+        >
+          Tie
+        </AppButton>
+      </div>
+    </SidebarSection>
+
+    <SidebarSection heading="Bars &amp; staves">
+      <div class="pallet__inline">
+        <AppButton class="pallet__half" @click="staffDialogOpen = true">Staff setup</AppButton>
+        <AppButton
+          ref="timeSigButton"
+          class="pallet__half"
+          :pressed="store.state.activeTool?.kind === 'timeSignature'"
+          aria-haspopup="true"
+          :aria-expanded="timeSigFlyoutOpen"
+          @click="toggleTimeSigFlyout"
+        >
+          {{ timeSigLabel === 'Time' ? 'Time sig' : timeSigLabel }}
+        </AppButton>
+      </div>
+
+      <SegmentedControl
+        stretch
+        aria-label="Eraser"
+        :options="[
+          { value: 'element', label: 'Erase note' },
+          { value: 'bar', label: 'Erase bar' },
+        ]"
+        :model-value="store.state.eraserMode"
+        @update:model-value="toggleEraser"
+      />
+
+      <div class="pallet__inline">
+        <AppButton
+          class="pallet__half"
+          :disabled="store.state.score.measures.length <= 1"
+          @click="store.removeLastMeasure()"
+        >
+          Remove bar
+        </AppButton>
+        <AppButton class="pallet__half" @click="store.addMeasure()">Add bar</AppButton>
+      </div>
+    </SidebarSection>
+
+    <p class="pallet__help">{{ helpText }}</p>
 
     <AppFlyout
       :open="timeSigFlyoutOpen"
@@ -227,110 +299,19 @@ function applyTimeSignature(): void {
           :options="beatUnitOptions"
           @update:model-value="(value) => (draftUnit = value as BeatUnit)"
         />
-        <AppButton @click="applyTimeSignature">Use This Time Signature</AppButton>
+        <AppButton @click="applyTimeSignature">Use this time signature</AppButton>
       </div>
     </AppFlyout>
 
-    <div v-if="store.state.activeTool" class="pallet__active">
-      <template v-if="store.state.activeTool.kind === 'timeSignature'">
-        <span class="pallet__time-sig-badge">{{
-          TimeSignature.format(store.state.activeTool.time)
-        }}</span>
-      </template>
-      <MusicIcon
-        v-else
-        :glyph="glyphFor(store.state.activeTool.kind, store.state.activeTool.duration.noteValue)"
-        :size="18"
-      />
-      <span>ready to place</span>
-    </div>
-
-    <div v-if="store.state.tieMode" class="pallet__active">
-      <span v-if="store.state.pendingTie">click the next note to close the tie</span>
-      <span v-else>click a note to start a tie</span>
-    </div>
-
-    <div v-if="store.state.recents.length" class="pallet__recents">
-      <button
-        v-for="(recent, index) in store.state.recents"
-        :key="index"
-        type="button"
-        class="pallet__recent"
-        :class="{
-          'pallet__recent--active':
-            !!store.state.activeTool && sameToolConfig(recent, store.state.activeTool),
-        }"
-        :title="
-          recent.kind === 'timeSignature'
-            ? TimeSignature.format(recent.time)
-            : `${recent.kind} · ${recent.duration.noteValue}`
-        "
-        @click="store.selectTool(recent)"
-      >
-        <span v-if="recent.kind === 'timeSignature'" class="pallet__time-sig-badge">{{
-          TimeSignature.format(recent.time)
-        }}</span>
-        <MusicIcon v-else :glyph="glyphFor(recent.kind, recent.duration.noteValue)" :size="16" />
-      </button>
-    </div>
-
-    <div class="pallet__row">
-      <AppButton :pressed="store.state.eraserMode === 'element'" @click="pickEraser('element')">
-        Eraser
-      </AppButton>
-      <AppButton :pressed="store.state.eraserMode === 'bar'" @click="pickEraser('bar')">
-        Bar Eraser
-      </AppButton>
-    </div>
-
-    <AppButton class="pallet__staff-button" @click="staffDialogOpen = true">
-      Staff Setup
-    </AppButton>
-
-    <div class="pallet__row">
-      <AppButton @click="store.addMeasure()">Add Measure</AppButton>
-      <AppButton
-        :disabled="store.state.score.measures.length <= 1"
-        @click="store.removeLastMeasure()"
-      >
-        Remove Measure
-      </AppButton>
-    </div>
-
-    <AppButton variant="link" class="pallet__hotkeys-link" @click="hotkeysDialogOpen = true">
-      Keyboard shortcuts
-    </AppButton>
-
     <StaffDialog :open="staffDialogOpen" @close="staffDialogOpen = false" />
-    <HotkeysDialog :open="hotkeysDialogOpen" @close="hotkeysDialogOpen = false" />
-  </SidebarSection>
+  </div>
 </template>
 
 <style scoped>
 .pallet {
-  gap: var(--space-3);
-}
-
-.pallet__row {
   display: flex;
-  gap: var(--space-2);
-}
-
-.pallet__mode {
-  display: flex;
-  align-items: center;
-  gap: var(--space-2);
-  margin-top: var(--space-2);
-}
-
-.pallet__mode-label {
-  font-size: var(--text-sm);
-  color: var(--color-text-muted);
-}
-
-.pallet__mode-toggle {
-  display: flex;
-  gap: var(--space-1);
+  flex-direction: column;
+  gap: var(--space-4);
 }
 
 .pallet__durations {
@@ -338,59 +319,61 @@ function applyTimeSignature(): void {
   gap: var(--space-1);
 }
 
-.pallet__duration-option {
+.pallet__duration {
+  flex: 1 1 0;
   display: flex;
   align-items: center;
   justify-content: center;
-  padding: var(--space-2);
-  color: var(--color-text);
-  background: none;
-  border: 1px solid transparent;
-  border-radius: var(--radius-sm);
-  cursor: pointer;
-}
-
-.pallet__duration-option:hover {
-  background: var(--color-surface);
-  border-color: var(--color-border);
-}
-
-.pallet__active {
-  display: flex;
-  align-items: center;
-  gap: var(--space-2);
-  font-size: var(--text-sm);
-  color: var(--color-text-muted);
-}
-
-.pallet__recents {
-  display: flex;
-  flex-wrap: wrap;
-  gap: var(--space-1);
-}
-
-.pallet__recent {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  padding: var(--space-1);
+  aspect-ratio: 1;
+  padding: 0;
   color: var(--color-text);
   background: var(--color-surface-raised);
   border: 1px solid var(--color-border);
   border-radius: var(--radius-sm);
   cursor: pointer;
+  transition:
+    background var(--duration-fast) var(--easing-standard),
+    border-color var(--duration-fast) var(--easing-standard);
 }
 
-.pallet__recent--active {
+.pallet__duration:hover:not(.pallet__duration--active) {
+  background: var(--color-surface);
+}
+
+.pallet__duration--active {
+  color: var(--color-accent-text);
+  background: var(--color-accent);
   border-color: var(--color-accent);
 }
 
-.pallet__staff-button {
-  align-self: flex-start;
+.pallet__duration:focus-visible {
+  outline: 2px solid var(--color-focus-ring);
+  outline-offset: 1px;
 }
 
-.pallet__hotkeys-link {
-  align-self: flex-start;
+.pallet__inline {
+  display: flex;
+  align-items: stretch;
+  gap: var(--space-2);
+}
+
+.pallet__grow {
+  flex: 1 1 auto;
+}
+
+.pallet__half {
+  flex: 1 1 0;
+  justify-content: center;
+}
+
+/* A persistent help line: its space is always reserved (two lines' worth at
+   the sidebar's width), so updating it never nudges the tools above it. */
+.pallet__help {
+  min-height: 2.6rem;
+  margin: 0;
+  font-size: var(--text-sm);
+  line-height: 1.35;
+  color: var(--color-text-muted);
 }
 
 .pallet__time-sig-form {
@@ -398,10 +381,5 @@ function applyTimeSignature(): void {
   flex-direction: column;
   gap: var(--space-3);
   min-width: 12rem;
-}
-
-.pallet__time-sig-badge {
-  font-size: var(--text-sm);
-  font-weight: 600;
 }
 </style>

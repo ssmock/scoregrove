@@ -57,7 +57,6 @@ function onScrub(event: Event): void {
         {{ isPlaying ? 'Pause' : 'Play' }}
       </AppButton>
       <AppButton
-        variant="quiet"
         aria-label="Stop"
         :disabled="playback.status === 'stopped'"
         @click="store.stopPlayback()"
@@ -67,7 +66,6 @@ function onScrub(event: Event): void {
 
       <AppButton
         v-if="loopLabel"
-        variant="quiet"
         :pressed="true"
         title="Clear loop passage"
         aria-label="Clear loop passage"
@@ -77,7 +75,6 @@ function onScrub(event: Event): void {
       </AppButton>
       <AppButton
         v-else
-        variant="quiet"
         :pressed="playback.loop"
         aria-label="Loop"
         @click="store.setPlaybackLoop(!playback.loop)"
