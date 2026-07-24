@@ -12,39 +12,85 @@ const isEmpty = (measure: Measure): boolean =>
     content.voices.every((voice) => voice.elements.every((element) => element.kind === 'rest')),
   );
 
+/**
+ * The measures a time-signature change at `from` governs: `from` itself and
+ * every following measure up to (but not including) the next one that carries
+ * a change of its own. They all share the new capacity, so a change (or
+ * removal) at `from` has to resize the whole run, not just `from`.
+ */
+const governedSpan = (score: Score, from: number): number[] => {
+  const indices = [from];
+
+  for (
+    let index = from + 1;
+    index < score.measures.length && score.measures[index].time === undefined;
+    index += 1
+  ) {
+    indices.push(index);
+  }
+
+  return indices;
+};
+
+/** Rebuilds a measure's rest-backed content to exactly fill `time`, preserving each staff's clef */
+const refill = (score: Score, measure: Measure, time: TimeSignature): Measure['contents'] =>
+  NonEmptyArray.of(
+    score.staves.map((_staff, staffIndex) =>
+      RestBacking.emptyStaffContent(time, measure.contents[staffIndex]?.clef),
+    ),
+  );
+
+/**
+ * The first measure in `span` (if any) that holds written music, so it can't
+ * have its capacity changed out from under it — `undefined` when the whole
+ * run is rest-backed and safe to resize.
+ */
+const writtenMeasureIn = (score: Score, span: number[]): number | undefined =>
+  span.find((index) => !isEmpty(score.measures[index]));
+
+const cannotResize = <T>(target: number, written: number): Result<T> =>
+  Result.invalid(
+    written === target
+      ? 'A time signature can only be set on an empty measure'
+      : `This time signature also governs measure ${written + 1}, which holds notes`,
+  );
+
 export const TimeSignatureOps = {
   /**
    * Sets (or replaces) the time signature change at `measureIndex` — the
    * pallet's time signature tool clicking a measure. A new time signature
-   * means a new capacity, so the measure's rest-backed content is rebuilt
-   * to exactly fill it across every staff; refuses outright on a measure
-   * that already holds notes/chords/dynamics, since there's no reasonable
-   * way to resize written music around a new meter without silently
-   * discarding or corrupting it.
+   * means a new capacity, so the rest-backed content is rebuilt to fill it —
+   * not just here but across every following measure that inherits this
+   * change (up to the next measure with its own), since they share it. Refuses
+   * outright if any measure in that run already holds notes/chords/dynamics,
+   * since there's no reasonable way to resize written music around a new meter
+   * without silently discarding or corrupting it.
    */
   setTimeSignature(score: Score, measureIndex: number, time: TimeSignature): Result<Score> {
     const measure = score.measures[measureIndex];
 
     if (!measure) return Result.invalid(`No measure at index ${measureIndex}`);
 
-    if (!isEmpty(measure)) {
-      return Result.invalid('A time signature can only be set on an empty measure');
-    }
+    const span = governedSpan(score, measureIndex);
+    const written = writtenMeasureIn(score, span);
 
-    const resetMeasure: Measure = {
-      ...measure,
-      time,
-      contents: NonEmptyArray.of(
-        score.staves.map((_staff, staffIndex) =>
-          RestBacking.emptyStaffContent(time, measure.contents[staffIndex]?.clef),
-        ),
-      ),
-    };
+    if (written !== undefined) return cannotResize(measureIndex, written);
+
+    const inSpan = new Set(span);
 
     return Result.ok({
       ...score,
       measures: NonEmptyArray.of(
-        score.measures.map((m, index) => (index === measureIndex ? resetMeasure : m)),
+        score.measures.map((m, index) =>
+          inSpan.has(index)
+            ? {
+                ...m,
+                // Only the clicked measure carries the change; the rest keep inheriting it.
+                ...(index === measureIndex ? { time } : {}),
+                contents: refill(score, m, time),
+              }
+            : m,
+        ),
       ),
     });
   },
@@ -52,9 +98,10 @@ export const TimeSignatureOps = {
   /**
    * Clears the time signature change at `measureIndex`, reverting it to
    * whichever time signature is effective just before it — the element
-   * eraser acting on a time signature. Rebuilds the rest-backed content to
-   * match that reverted capacity, so refuses the same way `setTimeSignature`
-   * does on a measure that isn't empty.
+   * eraser acting on a time signature. Rebuilds the rest-backed content of
+   * this measure and every following one that inherits it to match that
+   * reverted capacity, refusing the same way `setTimeSignature` does if any of
+   * them holds written music.
    *
    * The first measure is a special case: its time signature is always in
    * force, whether or not it restates one of its own (`ContextWalk` prints
@@ -73,8 +120,13 @@ export const TimeSignatureOps = {
       return Result.invalid('This measure has no time signature of its own to remove');
     }
 
-    if (!isEmpty(measure)) {
-      return Result.invalid('A time signature can only be removed from an empty measure');
+    const span = governedSpan(score, measureIndex);
+    const written = writtenMeasureIn(score, span);
+
+    if (written !== undefined) {
+      return written === measureIndex
+        ? Result.invalid('A time signature can only be removed from an empty measure')
+        : cannotResize(measureIndex, written);
     }
 
     const revertedTime =
@@ -82,21 +134,21 @@ export const TimeSignatureOps = {
         ? TimeSignature.commonTime()
         : ContextWalk.walk(score)[measureIndex - 1][0].time;
 
-    const resetMeasure: Measure = {
-      ...measure,
-      time: undefined,
-      contents: NonEmptyArray.of(
-        score.staves.map((_staff, staffIndex) =>
-          RestBacking.emptyStaffContent(revertedTime, measure.contents[staffIndex]?.clef),
-        ),
-      ),
-    };
+    const inSpan = new Set(span);
 
     return Result.ok({
       ...score,
       ...(measureIndex === 0 ? { time: revertedTime } : {}),
       measures: NonEmptyArray.of(
-        score.measures.map((m, index) => (index === measureIndex ? resetMeasure : m)),
+        score.measures.map((m, index) =>
+          inSpan.has(index)
+            ? {
+                ...m,
+                ...(index === measureIndex ? { time: undefined } : {}),
+                contents: refill(score, m, revertedTime),
+              }
+            : m,
+        ),
       ),
     });
   },

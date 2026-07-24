@@ -48,6 +48,80 @@ describe('TimeSignatureOps.setTimeSignature', () => {
     expect(changed.measures[0].contents[1].clef).toBe(Clef.Bass);
   });
 
+  it('resizes the following measures that inherit the change, not just this one', () => {
+    // Four empty 4/4 bars, only the first restating the meter; changing it to
+    // 3/4 has to truncate the inheriting bars too, or they stay 4/4-sized.
+    const staves = [Staff.of(Clef.Treble)];
+    const score = buildScore({
+      time: fourFour,
+      staves,
+      measures: [
+        RestBacking.emptyMeasure(fourFour, staves),
+        RestBacking.emptyMeasure(fourFour, staves),
+        RestBacking.emptyMeasure(fourFour, staves),
+        RestBacking.emptyMeasure(fourFour, staves),
+      ],
+    });
+
+    const changed = expectOk(TimeSignatureOps.setTimeSignature(score, 0, threeFour));
+
+    expectScoreCheckOk(changed);
+    expect(changed.measures[0].time).toEqual(threeFour);
+    for (const index of [1, 2, 3]) {
+      expect(changed.measures[index].time).toBeUndefined(); // still inheriting
+      expect(changed.measures[index].contents[0].voices[0].elements).toEqual(
+        RestBacking.wholeMeasureRests(threeFour),
+      );
+    }
+  });
+
+  it('stops resizing at the next measure that carries its own time signature', () => {
+    const staves = [Staff.of(Clef.Treble)];
+    const score = buildScore({
+      time: fourFour,
+      staves,
+      measures: [
+        RestBacking.emptyMeasure(fourFour, staves),
+        RestBacking.emptyMeasure(fourFour, staves),
+        { ...RestBacking.emptyMeasure(fourFour, staves), time: fourFour }, // its own 4/4 change
+        RestBacking.emptyMeasure(fourFour, staves),
+      ],
+    });
+
+    const changed = expectOk(TimeSignatureOps.setTimeSignature(score, 0, threeFour));
+
+    expectScoreCheckOk(changed);
+    expect(changed.measures[1].contents[0].voices[0].elements).toEqual(
+      RestBacking.wholeMeasureRests(threeFour),
+    );
+    // The bar with its own change (and everything it in turn governs) is untouched.
+    expect(changed.measures[2].time).toEqual(fourFour);
+    expect(changed.measures[2].contents[0].voices[0].elements).toEqual(
+      RestBacking.wholeMeasureRests(fourFour),
+    );
+    expect(changed.measures[3].contents[0].voices[0].elements).toEqual(
+      RestBacking.wholeMeasureRests(fourFour),
+    );
+  });
+
+  it('refuses when a following inherited measure holds notes', () => {
+    const staves = [Staff.of(Clef.Treble)];
+    const score = buildScore({
+      time: fourFour,
+      staves,
+      measures: [
+        RestBacking.emptyMeasure(fourFour, staves),
+        {
+          contents: NonEmptyArray.of([
+            StaffContent.singleVoice(NonEmptyArray.of([Note.of(g4, whole)])),
+          ]),
+        },
+      ],
+    });
+
+    expectInvalid(TimeSignatureOps.setTimeSignature(score, 0, threeFour));
+  });
+
   it('refuses a measure that already has notes', () => {
     const staves = [Staff.of(Clef.Treble)];
     const score = buildScore({
@@ -135,6 +209,31 @@ describe('TimeSignatureOps.clearTimeSignature', () => {
     expect(cleared.measures[1].contents[0].voices[0].elements).toEqual(
       RestBacking.wholeMeasureRests(fourFour),
     );
+  });
+
+  it('resizes the following inherited measures back to the reverted signature', () => {
+    // 4/4 piece; measure 1 switches to 3/4 and measure 2 inherits it. Clearing
+    // measure 1 reverts both back to 4/4.
+    const staves = [Staff.of(Clef.Treble)];
+    const score = buildScore({
+      time: fourFour,
+      staves,
+      measures: [
+        RestBacking.emptyMeasure(fourFour, staves),
+        { ...RestBacking.emptyMeasure(threeFour, staves), time: threeFour },
+        RestBacking.emptyMeasure(threeFour, staves),
+      ],
+    });
+
+    const cleared = expectOk(TimeSignatureOps.clearTimeSignature(score, 1));
+
+    expectScoreCheckOk(cleared);
+    expect(cleared.measures[1].time).toBeUndefined();
+    for (const index of [1, 2]) {
+      expect(cleared.measures[index].contents[0].voices[0].elements).toEqual(
+        RestBacking.wholeMeasureRests(fourFour),
+      );
+    }
   });
 
   it('refuses a later measure with no time signature of its own', () => {
