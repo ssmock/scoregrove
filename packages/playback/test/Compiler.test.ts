@@ -20,6 +20,7 @@ const note = (letter: PitchLetter, octave: number, duration: Duration): Note =>
   Note.of(Pitch.of(PitchClass.of(letter), Octave.of(octave)), duration);
 
 const quarter = Duration.of(NoteValue.Quarter);
+const half = Duration.of(NoteValue.Half);
 const whole = Duration.of(NoteValue.Whole);
 const cMajor = { tonic: PitchClass.of(PitchLetter.C), mode: Mode.Major };
 const fourFour: TimeSignature = { beats: PositiveInteger.of(4), beatUnit: BeatUnit.Quarter };
@@ -87,14 +88,16 @@ describe('Compiler.compile', () => {
   });
 
   it('carries dynamics through to event velocities', () => {
-    // p C | f D — the forte note should be louder than the piano one
+    // p C | f D — the forte note should be louder than the piano one. Halves,
+    // so the bar genuinely fills 4/4: this test is about velocity, and it
+    // should not lean on a fullness exemption to compile at all.
     const score = scoreOf(
       [
         measureOf([
           DynamicElement.of(DynamicMark.Piano),
-          note(PitchLetter.C, 4, quarter),
+          note(PitchLetter.C, 4, half),
           DynamicElement.of(DynamicMark.Forte),
-          note(PitchLetter.D, 4, quarter),
+          note(PitchLetter.D, 4, half),
         ]),
       ],
       { tempo: mm120 },

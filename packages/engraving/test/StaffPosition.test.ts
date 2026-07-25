@@ -9,6 +9,13 @@ describe('StaffPosition.of', () => {
     expect(StaffPosition.of(Clef.Treble, pitch(PitchLetter.B, 4))).toBe(0);
     expect(StaffPosition.of(Clef.Bass, pitch(PitchLetter.D, 3))).toBe(0);
     expect(StaffPosition.of(Clef.Alto, pitch(PitchLetter.C, 4))).toBe(0);
+    expect(StaffPosition.of(Clef.Tenor, pitch(PitchLetter.A, 3))).toBe(0);
+  });
+
+  it('puts middle C on the fourth line in tenor clef', () => {
+    // The defining difference from alto, where middle C is the middle line.
+    expect(StaffPosition.of(Clef.Tenor, pitch(PitchLetter.C, 4))).toBe(2);
+    expect(StaffPosition.of(Clef.Alto, pitch(PitchLetter.C, 4))).toBe(0);
   });
 
   it('counts positions diatonically, ignoring accidentals', () => {
@@ -25,6 +32,8 @@ describe('StaffPosition.pitch', () => {
     expect(StaffPosition.pitch(Clef.Treble, 0)).toEqual(pitch(PitchLetter.B, 4));
     expect(StaffPosition.pitch(Clef.Bass, 0)).toEqual(pitch(PitchLetter.D, 3));
     expect(StaffPosition.pitch(Clef.Alto, 0)).toEqual(pitch(PitchLetter.C, 4));
+    expect(StaffPosition.pitch(Clef.Tenor, 0)).toEqual(pitch(PitchLetter.A, 3));
+    expect(StaffPosition.pitch(Clef.Tenor, 2)).toEqual(pitch(PitchLetter.C, 4));
     expect(StaffPosition.pitch(Clef.Treble, -4)).toEqual(pitch(PitchLetter.E, 4));
     expect(StaffPosition.pitch(Clef.Treble, 4)).toEqual(pitch(PitchLetter.F, 5));
     expect(StaffPosition.pitch(Clef.Treble, -6)).toEqual(pitch(PitchLetter.C, 4));

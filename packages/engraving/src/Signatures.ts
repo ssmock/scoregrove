@@ -23,6 +23,8 @@ const clefGlyphs: Record<Clef, { glyph: GlyphName; change: GlyphName; y: number 
   Bass: { glyph: 'fClef', change: 'fClefChange', y: 1 },
   /** The C clef centers on the middle line */
   Alto: { glyph: 'cClef', change: 'cClefChange', y: 2 },
+  /** The same C clef, raised to center on the fourth line */
+  Tenor: { glyph: 'cClef', change: 'cClefChange', y: 1 },
 };
 
 const digitGlyphs: Record<string, GlyphName> = {

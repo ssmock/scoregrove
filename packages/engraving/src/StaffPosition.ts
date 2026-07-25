@@ -39,12 +39,15 @@ const diatonicIndex = (pitch: Pitch): number =>
 
 /**
  * The diatonic index of the pitch whose notehead sits on each clef's middle
- * line: B4 for treble, D3 for bass, C4 for alto.
+ * line: B4 for treble, D3 for bass, C4 for alto, A3 for tenor. Tenor puts
+ * middle C on the fourth line rather than the third, so it reads a third
+ * lower than alto.
  */
 const middleLineIndex: Record<Clef, number> = {
   Treble: 4 * 7 + letterSteps.B,
   Bass: 3 * 7 + letterSteps.D,
   Alto: 4 * 7 + letterSteps.C,
+  Tenor: 3 * 7 + letterSteps.A,
 };
 
 export const StaffPosition = {

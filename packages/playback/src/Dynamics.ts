@@ -6,8 +6,8 @@ import { addressKey } from './EventFlattening';
  * Resolves the written dynamics of a score into a velocity (0–1 loudness) per
  * sounded element, keyed by `addressKey`. A dynamic mark sets the level from
  * the next note onward; the level carries forward until the next mark. Sforzando
- * accents just its one following note; fortepiano hits its note loud then drops
- * to piano.
+ * and forzando each accent just their one following note; fortepiano hits its
+ * note loud then drops to piano.
  *
  * These are performance parameters, freely retunable, so they live here rather
  * than the domain. **Deliberate v1 simplifications (see playback.md):** a
@@ -27,6 +27,7 @@ const markVelocity: Record<DynamicMark, number> = {
   Fortissimo: 0.85,
   Fortississimo: 1.0,
   Sforzando: 0.9,
+  Forzando: 0.9,
   Fortepiano: 0.7,
 };
 
@@ -63,8 +64,8 @@ export const Dynamics = {
 
               if (DynamicChange.is(dynamic)) return; // ramp deferred; level steps at the next mark
 
-              if (dynamic === DynamicMark.Sforzando) {
-                pendingAccent = markVelocity.Sforzando; // one-note accent, level unchanged
+              if (dynamic === DynamicMark.Sforzando || dynamic === DynamicMark.Forzando) {
+                pendingAccent = markVelocity[dynamic]; // one-note accent, level unchanged
               } else if (dynamic === DynamicMark.Fortepiano) {
                 pendingAccent = markVelocity.Fortepiano; // loud attack…
                 level = markVelocity.Piano; // …then soft

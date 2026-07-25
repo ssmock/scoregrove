@@ -32,13 +32,26 @@ const governedSpan = (score: Score, from: number): number[] => {
   return indices;
 };
 
-/** Rebuilds a measure's rest-backed content to exactly fill `time`, preserving each staff's clef */
-const refill = (score: Score, measure: Measure, time: TimeSignature): Measure['contents'] =>
-  NonEmptyArray.of(
+/**
+ * Rebuilds a measure's rest-backed content to exactly fill `time`, preserving
+ * each staff's clef, and drops any `partial` flag along with it: a measure
+ * refilled to the new capacity is full by construction, so the flag would be
+ * left asserting a shortfall that no longer exists.
+ *
+ * This does mean a time signature change silently costs a deliberately short
+ * bar its shortness. Accepted rather than solved — only rest-backed measures
+ * can be resized at all, so the combination is rare, and a stale flag would be
+ * worse than a lost one.
+ */
+const refilled = (score: Score, measure: Measure, time: TimeSignature): Measure => ({
+  ...measure,
+  partial: undefined,
+  contents: NonEmptyArray.of(
     score.staves.map((_staff, staffIndex) =>
       RestBacking.emptyStaffContent(time, measure.contents[staffIndex]?.clef),
     ),
-  );
+  ),
+});
 
 /**
  * The first measure in `span` (if any) that holds written music, so it can't
@@ -84,10 +97,9 @@ export const TimeSignatureOps = {
         score.measures.map((m, index) =>
           inSpan.has(index)
             ? {
-                ...m,
+                ...refilled(score, m, time),
                 // Only the clicked measure carries the change; the rest keep inheriting it.
                 ...(index === measureIndex ? { time } : {}),
-                contents: refill(score, m, time),
               }
             : m,
         ),
@@ -143,9 +155,8 @@ export const TimeSignatureOps = {
         score.measures.map((m, index) =>
           inSpan.has(index)
             ? {
-                ...m,
+                ...refilled(score, m, revertedTime),
                 ...(index === measureIndex ? { time: undefined } : {}),
-                contents: refill(score, m, revertedTime),
               }
             : m,
         ),

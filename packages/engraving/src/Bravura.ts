@@ -526,6 +526,14 @@ export const glyphs = {
       opticalCenter: [1.76, 0],
     },
   },
+  dynamicForzando: {
+    codepoint: '\u{E535}',
+    bBoxNE: [1.988, 1.776],
+    bBoxSW: [-0.564, -0.608],
+    anchors: {
+      opticalCenter: [1.352, 0],
+    },
+  },
   dynamicFortePiano: {
     codepoint: '\u{E534}',
     bBoxNE: [2.476, 1.776],

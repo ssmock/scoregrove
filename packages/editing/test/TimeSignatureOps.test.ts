@@ -36,6 +36,23 @@ describe('TimeSignatureOps.setTimeSignature', () => {
     );
   });
 
+  it('clears a partial flag, since the refilled measure is no longer short', () => {
+    const staves = [Staff.of(Clef.Treble)];
+    const score = buildScore({
+      time: fourFour,
+      staves,
+      measures: [{ ...RestBacking.emptyMeasure(fourFour, staves), partial: true }],
+    });
+
+    const changed = expectOk(TimeSignatureOps.setTimeSignature(score, 0, threeFour));
+
+    expectScoreCheckOk(changed);
+    expect(changed.measures[0].partial).toBeUndefined();
+    expect(changed.measures[0].contents[0].voices[0].elements).toEqual(
+      RestBacking.wholeMeasureRests(threeFour),
+    );
+  });
+
   it('leaves each staff’s clef intact (it lives on the staff, not the content)', () => {
     const staves = [Staff.of(Clef.Treble), Staff.of(Clef.Bass)];
     const score = buildScore({
@@ -171,6 +188,22 @@ describe('TimeSignatureOps.clearTimeSignature', () => {
     expect(cleared.measures[0].contents[0].voices[0].elements).toEqual(
       RestBacking.wholeMeasureRests(TimeSignature.commonTime()),
     );
+  });
+
+  it('clears a partial flag too, the same way setting one does', () => {
+    const staves = [Staff.of(Clef.Treble)];
+    const score = buildScore({
+      time: threeFour,
+      staves,
+      measures: [
+        { ...RestBacking.emptyMeasure(threeFour, staves), time: threeFour, partial: true },
+      ],
+    });
+
+    const cleared = expectOk(TimeSignatureOps.clearTimeSignature(score, 0));
+
+    expectScoreCheckOk(cleared);
+    expect(cleared.measures[0].partial).toBeUndefined();
   });
 
   it('resets the first measure to common time even when it never restated its own change', () => {

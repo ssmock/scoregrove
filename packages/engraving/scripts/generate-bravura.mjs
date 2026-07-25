@@ -106,6 +106,7 @@ const glyphNames = [
   'dynamicFF',
   'dynamicFFF',
   'dynamicSforzato',
+  'dynamicForzando',
   'dynamicFortePiano',
   // Navigation
   'segno',

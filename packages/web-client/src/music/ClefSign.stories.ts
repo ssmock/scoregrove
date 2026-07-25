@@ -19,3 +19,4 @@ type Story = StoryObj<typeof meta>;
 export const Treble: Story = { args: { clef: Clef.Treble, x: 1 } };
 export const Bass: Story = { args: { clef: Clef.Bass, x: 1 } };
 export const Alto: Story = { args: { clef: Clef.Alto, x: 1 } };
+export const Tenor: Story = { args: { clef: Clef.Tenor, x: 1 } };

@@ -11,6 +11,8 @@ describe('Signatures.clef', () => {
     expect(Signatures.clef(Clef.Treble).glyphs).toEqual([{ glyph: 'gClef', x: 0, y: 3 }]);
     expect(Signatures.clef(Clef.Bass).glyphs).toEqual([{ glyph: 'fClef', x: 0, y: 1 }]);
     expect(Signatures.clef(Clef.Alto).glyphs).toEqual([{ glyph: 'cClef', x: 0, y: 2 }]);
+    // Tenor is the same C clef raised a line — one staff space up from alto.
+    expect(Signatures.clef(Clef.Tenor).glyphs).toEqual([{ glyph: 'cClef', x: 0, y: 1 }]);
   });
 });
 

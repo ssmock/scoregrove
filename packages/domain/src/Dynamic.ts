@@ -10,13 +10,16 @@ const markMembers = {
   Fortissimo: 'Fortissimo',
   Fortississimo: 'Fortississimo',
   Sforzando: 'Sforzando',
+  Forzando: 'Forzando',
   Fortepiano: 'Fortepiano',
 } as const;
 
 /**
  * The traditional dynamic marks, ordered softest to loudest, plus the accent
- * dynamics sforzando (sudden force) and fortepiano (loud then immediately
- * soft). Mapping to loudness values is deliberately left for later.
+ * dynamics: sforzando and forzando (both a sudden force on one note, printed
+ * differently — `sfz` and `fz` — and so kept distinct rather than collapsed)
+ * and fortepiano (loud then immediately soft). Mapping to loudness values is
+ * deliberately left for later.
  */
 export type DynamicMark = (typeof markMembers)[keyof typeof markMembers];
 
@@ -30,6 +33,7 @@ const abbreviations: Record<DynamicMark, string> = {
   Fortissimo: 'ff',
   Fortississimo: 'fff',
   Sforzando: 'sfz',
+  Forzando: 'fz',
   Fortepiano: 'fp',
 };
 

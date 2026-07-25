@@ -7,6 +7,7 @@ import { Measure, StaffContent, Voice } from '../src/Measure';
 import { DynamicElement, Note, Rest } from '../src/MeasureElement';
 import { NavigationMark } from '../src/Navigation';
 import { NonEmptyArray } from '../src/NonEmptyArray';
+import { NonEmptyString } from '../src/NonEmptyString';
 import { Octave, Pitch, PitchClass, PitchLetter } from '../src/Pitch';
 import { PositiveInteger } from '../src/PositiveInteger';
 import { BeatUnit, Swing, TimeSignature } from '../src/TimeSignature';
@@ -49,6 +50,28 @@ describe('Measure', () => {
   it('preserves attributes like swing changes', () => {
     const measure = expectOk(Measure.create({ contents: contents(), swing: Swing.Straight }));
     expect(measure.swing).toBe('Straight');
+  });
+
+  it('carries a source bar label through, including non-numeric ones', () => {
+    // Labels are display-only and need not be numbers: the Haydn corpus
+    // labels fifteen measures X1–X6, and repeats those labels across
+    // movements. Position is the identity; this is just what to print.
+    const numbered = expectOk(
+      Measure.create({ contents: contents(), label: NonEmptyString.of('92') }),
+    );
+
+    const lettered = expectOk(
+      Measure.create({ contents: contents(), label: NonEmptyString.of('X1') }),
+    );
+
+    expect(numbered.label).toBe('92');
+    expect(lettered.label).toBe('X1');
+  });
+
+  it('leaves the label absent when the source gives none', () => {
+    const measure = expectOk(Measure.create({ contents: contents() }));
+
+    expect(measure.label).toBeUndefined();
   });
 
   it('accepts repeatTimes alongside a RepeatClose barline', () => {
@@ -111,6 +134,11 @@ describe('Measure.check', () => {
     contents: NonEmptyArray.of([StaffContent.of(NonEmptyArray.of(voices))]),
   });
 
+  const partialMeasureOf = (...voices: Voice[]): Measure => ({
+    ...measureOf(...voices),
+    partial: true,
+  });
+
   const voice = (
     ...elements: [Note | Rest | DynamicElement, ...(Note | Rest | DynamicElement)[]]
   ) => Voice.of(NonEmptyArray.of(elements));
@@ -167,20 +195,36 @@ describe('Measure.check', () => {
     ]);
   });
 
-  it('rejects an overfull measure even when underfull is allowed', () => {
+  it('rejects an overfull measure even when it is partial', () => {
+    // `partial` lifts the lower bound only.
     const full = Duration.of(NoteValue.Whole);
     const error = expectInvalid(
-      Measure.check(threeFour, measureOf(voice(Note.of(c4, full))), { allowUnderfull: true }),
+      Measure.check(threeFour, partialMeasureOf(voice(Note.of(c4, full)))),
     );
     expect(error.messages).toEqual([
       'staff 1, voice 1 overfills the measure: 1/1 of a whole note; the 3/4 measure holds 3/4',
     ]);
   });
 
-  it('allows an underfull pickup when requested', () => {
-    expectOk(
-      Measure.check(threeFour, measureOf(voice(Note.of(c4, quarter))), { allowUnderfull: true }),
+  it('allows a partial measure to fall short', () => {
+    expectOk(Measure.check(threeFour, partialMeasureOf(voice(Note.of(c4, quarter)))));
+  });
+
+  it('rejects a partial measure holding no duration at all', () => {
+    // Dynamics consume no time, so this voice sums to nothing. Deliberately
+    // short is fine; deliberately empty is a mistake in any position.
+    const error = expectInvalid(
+      Measure.check(threeFour, partialMeasureOf(voice(DynamicElement.of(DynamicMark.Piano)))),
     );
+    expect(error.messages).toEqual([
+      'staff 1, voice 1 is empty; a partial measure still needs some duration',
+    ]);
+  });
+
+  it('gives the first measure no exemption of its own', () => {
+    // Position confers nothing — an unflagged short measure is an error
+    // wherever it sits, and `Score.check` no longer special-cases index 0.
+    expectInvalid(Measure.check(threeFour, measureOf(voice(Note.of(c4, quarter)))));
   });
 
   it('checks every voice independently', () => {

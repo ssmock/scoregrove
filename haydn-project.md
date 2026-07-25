@@ -86,10 +86,85 @@ domain model at all, which is exactly what makes it useful.
    tempo, tie chains folded exactly once, no zero or negative durations, every part sounding in
    every measure it should. Then listen — the ear catches what no assertion will.
 
-## A. What the piece will demand that we do not have
+## A. What the piece demands that we do not have — measured
 
-Predicted from reading the domain against the score. The importer's report will replace this
-list with a measured one; until then, this is the planning assumption.
+**This section is no longer a prediction.** The corpus file is in the repo, and a direct element
+census of it (113,658 elements, 117 distinct tags) has replaced the guesses. The importer's
+`--report` mode will still be built, because it must run per-import as the gap list evolves — but
+its first answer is already known, and it reshaped the plan.
+
+### The census
+
+| Scale            | Value                                                          |
+| ---------------- | -------------------------------------------------------------- |
+| Parts / measures | 4 parts × **531 measures**, all four movements in **one file** |
+| Notes            | 10,593 (Vln I 3,321 · Vln II 2,809 · Vla 2,326 · Vc 2,080)     |
+| Divisions        | **24, unchanging** — 16 declarations, all identical            |
+| Note values      | whole → 32nd only; no 64ths, no breves                         |
+| Tuplets          | 3:2 ×1,224, 6:4 ×30 — nothing exotic                           |
+| Time signatures  | 4/4, 2/2, 3/4, 2/2 — matching the four movements               |
+| Keys (fifths)    | 0 → 1 → 0 → −3 → 0 — C, G, C, c, C, matching the movements     |
+
+The time signatures and keys independently confirm the movement facts from review item 7, which
+is a useful sign the encoding is coherent.
+
+### What the census confirmed
+
+- **Staff grouping** — the file opens with exactly what review item 5 designed for:
+  `<part-group><group-symbol>bracket</group-symbol><group-barline>yes</group-barline>`. One
+  bracket over four parts, barlines joined.
+- **Part identity** — `<part-name>` plus `<instrument-sound>strings.violin|viola|cello`, giving
+  playback real per-part sound identity. **But there is no `<part-abbreviation>` anywhere**, so
+  the short names ("Vln. I") must be derived or authored by us, not imported.
+- **Slur numbering is the dominant notation problem** — **2,416 slurs**, more than any other
+  notation element by a factor of two. This is the single most load-bearing domain change.
+- **Ornaments are exactly trills and turns** — 65 total: 52 `trill-mark`, 13 `turn`. No mordents.
+  Review item 4's proposed set is right, and can even be trimmed.
+
+### What the census refuted — scope that vanished
+
+Predictions I made that the piece simply does not contain. Each was going to cost real work:
+
+- **Tremolo: zero.** **Arpeggiate: zero.** So the review item 4 sub-decision about modeling them
+  separately from ornaments is real but **not needed for this piece** — defer it entirely.
+- **`<technical>`: zero.** No up/down bow, no `pizz.`/`arco`, anywhere in the work. The whole
+  "bowing and technique directions" line item drops out of Phase 2.
+- **Articulations: 1,040, every one of them `staccato`.** Not one accent, tenuto, marcato, or
+  staccatissimo in 531 measures. Our five-member `Articulation` is already four members more than
+  this piece needs.
+- **Lyrics, octave-shift, pedal: zero**, as expected.
+- **Multi-voice is nearly absent.** Voice 2 carries **57 notes total across all four parts**
+  (32 + 9 + 10 + 6) against voice 1's 10,536. The multi-voice collision problem that
+  `rendering-strategy.md` calls "genuinely hard engraving" barely arises here. There are still 22
+  `<backup>` and 18 `<forward>` elements to read correctly, but the engraving risk is small.
+
+### New gaps the census found that I had not predicted
+
+1. **`Clef` has no Tenor.** `Clef` is `Treble | Bass | Alto`. The cello uses **C4 tenor clef** —
+   the six `<clef>` elements are the four initial clefs plus one change to tenor and its return
+   to bass. A one-member addition, but a hard blocker: without it that passage is unrepresentable,
+   not merely mis-drawn. It will also land straight on the known gap that mid-piece clef changes
+   print full-size at the measure start rather than small before the preceding barline.
+
+2. **`DynamicMark` has no Forzando (`fz`) — and `fz` is the most common dynamic in the piece.**
+   149 occurrences, ahead of `p` (126), `f` (100), `pp` (23), `ff` (8). We have `Sforzando` (sfz)
+   and `Fortepiano` (fp), but not `fz`. Mapping `fz` → Sforzando would print the wrong glyph on
+   149 notes, so this needs a real member.
+
+3. **All four movements are one file with no structural delimiter.** Movements are marked only by
+   `<words>` text — `"I. "`, `"II."`, `"III. Menuetto"`, `"IV. Finale"` — and `light-light`
+   barlines. **This directly changes Phase 0:** the movement II theme smoke test is a _measure
+   range within one score_, not a separate file, so the importer needs a measure-slice option from
+   the start. The same `<words>` track carries the tempo marks (`Allegro`, `Poco adagio; cantabile`,
+   `Presto`), the variation labels (`Var. I`–`Var. IV`), and the navigation text (`Fine`,
+   `Menuetto D.C.`, `Trio`, `la seconda volta più presto`) — so free text is doing structural work
+   that our domain models properly, and the importer must recognize it rather than pass it through.
+
+4. **Transcription noise, mild.** 14 `<notehead>none</notehead>` (invisible noteheads, which we
+   have no notehead-style concept for — `TODO-more.md` already flags this); `<other-dynamics>`
+   carrying `" dolce"` ×4 and `" sempre"` ×1 (expressive text encoded as dynamics, with
+   leading space and non-breaking-space artifacts); three `<words>` containing a bare `♮`. Small
+   enough to report-and-drop, and a fair early signal that the encoding is good.
 
 ### Structural blockers — a quartet is wrong on the page without these
 
@@ -112,25 +187,32 @@ list with a measured one; until then, this is the planning assumption.
 
 ### Notation vocabulary — the ornament gap
 
-`Notations` carries articulations, slur, fermata, graces, lyrics. `Articulation` is five members
-(Staccato, Staccatissimo, Tenuto, Accent, Marcato). There is **no ornament concept at all**:
-no trill, turn, mordent, tremolo, arpeggio. Haydn will not get through movement I without
-trills. Bowing marks (up/down bow) and `pizz.`/`arco` as directions come next; string-specific
-techniques (harmonics, mutes, sul ponticello) can wait for the Beethoven tier.
+`Notations` carries articulations, slur, fermata, graces, lyrics. There is **no ornament concept
+at all**, and the piece needs exactly two: **trill** (52) and **turn** (13). Mordents, tremolo,
+arpeggio, and every `<technical>` bowing mark are absent from this work — they belong to the
+Beethoven tier, not here.
 
 ### Fidelity gaps we already know about
 
-These are recorded in the two existing gap lists and will all become visible at quartet scale:
+Recorded in the two existing gap lists, now annotated with how much this piece actually exercises
+each:
 
-- No stub (partial) secondary beams — a dotted-eighth–sixteenth figure draws one beam. Ubiquitous
-  in Haydn.
-- Chords never beam. Double stops are chords, and they occur inside beamed runs.
-- Accidental state is per voice, and a note tied across a barline restates its accidental.
-- Multi-voice rest placement collides (divisi passages put two voices on one staff).
-- Crescendo/diminuendo step rather than ramp; a dynamic applies to its own voice, not the staff.
-  A `cresc.` under a quartet texture is a staff-level, arguably ensemble-level, instruction.
-- Accel./rit. not performed.
-- A slur spanning 3+ systems draws only its first and last segments.
+- No stub (partial) secondary beams — with 1,947 sixteenths and 421 thirty-seconds against 3,833
+  eighths, dotted-eighth–sixteenth figures are certain. **High impact.**
+- Chords never beam — **534 chords** (double stops), and they occur inside beamed runs.
+  **High impact.**
+- Accidental state is per voice, and a note tied across a barline restates its accidental —
+  976 accidentals and 350 ties. **Moderate.**
+- Mid-piece clef changes print full-size at the measure start — hits the cello's tenor-clef
+  passage exactly twice. **Low volume, high visibility.**
+- Multi-voice rest placement collides — **near-zero impact here** (57 voice-2 notes total).
+- Crescendo/diminuendo step rather than ramp, and a dynamic applies to its own voice rather than
+  the staff — only 16 wedges, but 406 dynamics whose voice-vs-staff scope matters. **Moderate.**
+- Accel./rit. not performed — the piece has one tempo instruction of this kind
+  (`la seconda volta più presto`), and it is a repeat-dependent tempo change rather than a ramp.
+  **Low, but interesting: it is not representable at all today.**
+- A slur spanning 3+ systems draws only its first and last segments — with 2,416 slurs, some will
+  be long. **Moderate.**
 
 ---
 
@@ -140,14 +222,25 @@ Ordered for implementation. Smoke test end-to-end first, breadth second, polish 
 
 ### Phase 0 — Harness and target (before any importer code)
 
-- [ ] **Manual step (human):** download the MusicXML of Op. 76 No. 3 from the OpenScore String
-      Quartets set on MuseScore.com (score `20428156`), choosing **uncompressed `.musicxml`**, not
-      `.mxl`. MuseScore.com blocks automated fetching (403), so this is a browser download done
-      once. Commit it under `packages/import/corpus/` with a `PROVENANCE.md` recording the source
-      URL, CC0 status, and OpenScore's requested credit line. After this the corpus is in-repo and
-      every later import is reproducible and offline.
-- [ ] Obtain a reference engraving (published PDF or the source editor's own render) to compare
-      against, page by page.
+- [x] **Corpus obtained** — downloaded from the OpenScore String Quartets set on MuseScore.com
+      (score `20428156`), which offers `.mxl` (compressed) only. Extracted once at ingest with
+      `python3 -m zipfile` (this box has no `unzip`), keeping the importer free of a zip
+      dependency per review item 3. The archive held exactly `META-INF/container.xml` and
+      `score.xml`. Now at `packages/import/corpus/haydn-op76-no3.musicxml` — MusicXML 4.0,
+      `score-partwise`, 4.09 MB — with the original `.mxl` kept beside it and full attribution in
+      `packages/import/corpus/PROVENANCE.md`.
+- [x] **Reference engraving obtained** — the OpenScore PDF (26 pages, all four movements) at
+      `packages/import/corpus/reference/haydn-op76-no3.pdf`, for page-by-page comparison.
+- [x] **Element census run** — the measured backlog in section A, produced directly from the
+      corpus file without an importer. This front-ran Phase 1's `--report` deliverable and
+      changed the plan; see the "refuted" and "new gaps" lists.
+- [x] **Movement boundaries located** — tabulated in `PROVENANCE.md`. Movement II's theme, the
+      smoke-test target, is **positional indices 128–148** (21 measures) of 531. This turned up a
+      trap worth stating loudly: **`measure/@number` is a display label, not an index.** Numbering
+      restarts at every movement, and 15 measures carry non-numeric labels (`X1`–`X6`, all
+      `implicit="yes"`) that themselves repeat across movements — there are four separate measures
+      labelled `X1`. Any slicing, addressing, or error message keyed on `@number` will be wrong;
+      positional order is the only reliable index.
 - [ ] `scripts/haydn.mjs` — the one command: import, engrave, capture per-system PNGs headlessly,
       write them somewhere reviewable alongside the reference. Playwright-core is already known
       to work in this environment.
@@ -172,7 +265,13 @@ Ordered for implementation. Smoke test end-to-end first, breadth second, polish 
 - [ ] `DivisionsToDuration` — MusicXML counts in arbitrary `<divisions>` per quarter; we carry
       `NoteValue` + dots + tuplet. Exact `Fraction` arithmetic throughout, matching the rest of
       the codebase. Anything that will not land on a representable `Duration` is a reportable
-      failure, not a rounding.
+      failure, not a rounding. **This corpus is kind here:** divisions is 24 throughout and never
+      changes, and 24 = 2³·3 divides evenly for every value present (32nd = 3, triplet-eighth = 4,
+      sixteenth = 6). Do not let that lull the implementation into assuming a constant — other
+      scores change divisions mid-part — but it does mean rounding bugs cannot hide behind this
+      piece.
+- [ ] `MeasureSlicing` — import a measure range, not just a whole file. Required from day one,
+      because the smoke test is movement II's theme inside a 531-measure score.
 - [ ] `PitchReading` — `<pitch>`/`<alter>`/`<octave>` → domain `Pitch`; `<rest>` → `Rest`;
       simultaneous notes with `<chord/>` folded into `Chord`.
 - [ ] `NotationReading` — ties, slurs, articulations, fermatas, grace notes, tuplets, dynamics,
@@ -194,26 +293,42 @@ to regardless. Crucially, `staves` stays the flat ordered list that `measure.con
 against, so `Score.check`'s existing `contents.length === staves.length` invariant survives
 untouched.
 
-- [ ] **`Part`** — identity: full name, short name (systems after the first print "Vln. I", not
-      "Violin I"), and a sound/instrument reference for playback. A part owns one _or more_
-      staves (quartet: 4 parts × 1 staff; piano: 1 part × 2 staves). Replaces the bare `label?`.
+Ordered by measured impact. The first two are one-member additions that are nonetheless hard
+blockers — they came out of the census, not the original prediction.
+
+- [ ] **`Clef.Tenor`** — the cello's C4 passage is otherwise unrepresentable. One member; do it
+      first because it is the cheapest correctness win in the project.
+- [ ] **`DynamicMark.Forzando` (`fz`)** — 149 occurrences, the most common dynamic in the work.
+      Distinct from the existing `Sforzando` (`sfz`) in print, so it needs its own member rather
+      than a mapping.
+- [ ] **`Part`** — identity: full name, short name, and a sound/instrument reference for playback
+      (`<instrument-sound>strings.violin|viola|cello` is present and usable). A part owns one _or
+      more_ staves (quartet: 4 parts × 1 staff; piano: 1 part × 2 staves). Replaces the bare
+      `label?`. Note the corpus has **no `<part-abbreviation>`**, so short names are ours to
+      author — the importer cannot supply them.
 - [ ] **`StaffGroup`** — a bracket/brace over a staff range, with a symbol (bracket / brace /
       line) and whether barlines run through the group. Nestable, because MusicXML's groups are.
       For the quartet: one bracket over all four, barlines joined. Affects engraving's
       `VerticalLayout` and `SystemLayout`.
 - [ ] **Slur numbering** — make overlapping and nested slurs distinguishable. Touches
       `Notations`, engraving's `Slurs`, and the importer's `NotationReading` simultaneously.
-- [ ] **Ornaments in the domain, not derived** (review item 4) — `ornaments?` on `Notations`,
-      covering the single-note symbols: trill, turn, inverted turn, mordent, inverted mordent.
-      A trill cannot be inferred from pitches, so deriving it is not an option, and both
-      pipelines interpret it differently (engraving prints glyph + wavy extension; playback
-      realizes the alternation). This follows the fermata precedent `Notations.ts` already sets.
-- [ ] **Arpeggio and tremolo modeled separately** — not as `ornaments` members. An arpeggio is a
-      chord-attack property (it belongs on `Chord`), and a tremolo carries duration semantics and
-      a measured/unmeasured distinction, and can span two notes. Folding either into a flat
-      ornament list would repeat the mistake of folding the fermata into `Articulation`.
-- [ ] **Bowing and technique directions** — up/down bow, `pizz.`/`arco`. Possibly a general
-      staff-attached text direction, which the score needs anyway.
+- [ ] **Ornaments in the domain, not derived** (review item 4) — `ornaments?` on `Notations`.
+      The census narrows the needed set to **trill and turn**; add inverted turn and the mordents
+      only if a later piece asks. A trill cannot be inferred from pitches, so deriving it was
+      never an option, and both pipelines interpret it differently (engraving prints glyph + wavy
+      extension; playback realizes the alternation). Follows the fermata precedent `Notations.ts`
+      already sets.
+- [ ] **Movement-structure text → domain concepts.** `Fine`, `Menuetto D.C.`, and `Trio` are
+      encoded as free `<words>`, but `Navigation` models them properly. The importer must
+      recognize these rather than pass them through as annotations, or the Menuetto's da capo
+      will not unfold. `la seconda volta più presto` is a repeat-dependent tempo change that is
+      **not representable today** — report it and decide deliberately.
+
+_Deferred by the census, not dropped:_ arpeggio and tremolo modeling (zero occurrences), and
+bowing/technique directions (zero `<technical>` elements). Both are Beethoven-tier work. The
+design reasoning for keeping arpeggio and tremolo out of a flat ornament list is preserved in
+review item 4 for when it becomes due.
+
 - [ ] Whatever else the histogram puts above these.
 
 ### Phase 3 — Engraving
@@ -364,9 +479,15 @@ calling this piece done.
    keep their zero.
 
 3. **`.mxl` in v1 — ✅ RESOLVED: no.** It would need a second dependency (a zip reader) purely to
-   handle a container format. Since we commit exactly one corpus file, we simply commit the
-   uncompressed `.musicxml` — MuseScore exports it on request. If `.mxl` becomes worth having
-   later, `fflate` is the pick (tiny, MIT, zero-dep), and the change is confined to `XmlReading`.
+   handle a container format.
+
+   Note that MuseScore.com's MusicXML download is **`.mxl` only** — uncompressed is not on offer,
+   so this is not avoided by asking for a different export. It is avoided by _when_ we decompress:
+   `.mxl` is an ordinary zip, so we unzip once by hand at ingest and commit the uncompressed
+   document. Since we commit exactly one corpus file, a decompression step in the importer would
+   run once per project lifetime — that is a script's job, not a dependency's. If `.mxl` support
+   becomes genuinely worth having later (accepting arbitrary user uploads would do it), `fflate`
+   is the pick (tiny, MIT, zero-dep) and the change is confined to `XmlReading`.
 
 4. **Ornaments — ✅ RESOLVED: in the domain.** A trill is not derivable — nothing in a sequence of
    pitches implies one — so "engraving-derived" was never actually available. And the two

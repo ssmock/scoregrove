@@ -43,3 +43,16 @@ export const FSharpMinorAlto: Story = {
     x: 1,
   },
 };
+
+/** The tenor sharp exception: F♯ and G♯ drop an octave, so the run ascends. */
+export const BMajorTenor: Story = {
+  args: { clef: Clef.Tenor, keySignature: key(PitchLetter.B, Mode.Major), x: 1 },
+};
+
+export const EFlatMajorTenor: Story = {
+  args: {
+    clef: Clef.Tenor,
+    keySignature: key(PitchLetter.E, Mode.Major, Accidental.Flat),
+    x: 1,
+  },
+};

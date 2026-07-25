@@ -6,6 +6,7 @@ import type { KeySignature } from './KeySignature';
 import type { MeasureElement } from './MeasureElement';
 import type { NavigationJump, NavigationMark } from './Navigation';
 import { NonEmptyArray } from './NonEmptyArray';
+import type { NonEmptyString } from './NonEmptyString';
 import type { PositiveInteger } from './PositiveInteger';
 import { Result } from './Result';
 import type { Tempo } from './Tempo';
@@ -63,9 +64,47 @@ export const StaffContent = {
  *   passage numbers (e.g. [1] for a first ending)
  * - `marks` places navigation landmarks (segno, coda, fine) at this measure
  * - `jump` is a navigation instruction taking effect at the end of this measure
+ * - `label` is what an imported source *calls* this measure, for display only
+ * - `partial` opts this measure out of the fullness rule (see below)
+ *
+ * ## `label` is not an index
+ *
+ * A measure's identity is its **position** in `Score.measures`, and nothing
+ * else. `label` exists solely to carry a source's own bar numbering through
+ * import so it can be printed, and it is deliberately not named `number` to
+ * make keying on it read as the mistake it is.
+ *
+ * Real scores make this concrete. In the Haydn corpus (see
+ * `packages/import/corpus`) the labels restart at every movement, so four
+ * different measures are labelled `0`; fifteen are labelled `X1`–`X6`, which
+ * are not numbers at all; and `X1` alone occurs four times. Any lookup, slice,
+ * or address keyed on `label` is therefore ambiguous by construction. Use the
+ * positional index — including in error messages, where the temptation is
+ * strongest.
+ *
+ * ## `partial` measures
+ *
+ * Normally every voice must exactly fill the measure. `partial` says the
+ * shortfall is deliberate, and is the only way to write a measure that doesn't
+ * fill — position confers no exemption, not even the first measure's.
+ *
+ * These are commoner than the anacrusis alone suggests, because a partial
+ * measure is usually half of a pair: a pickup at a section's start is completed
+ * by a short bar at its end. The Haydn corpus has 22 across four movements, at
+ * every variation and Menuetto/Trio boundary. Deliberately *not* modeled is
+ * which measure completes which — the partner is sometimes the next measure and
+ * sometimes a backward repeat's target dozens of bars away, so identifying it
+ * means unfolding the navigation. That belongs to whoever has already done so
+ * (playback's `NavigationUnfolding`), not to a measure in isolation.
+ *
+ * The flag only lifts the *lower* bound. Overfull stays an error, and a partial
+ * measure must still hold some sounding duration — a measure of nothing but
+ * dynamics is a mistake in any position.
  */
 export type Measure = {
   contents: NonEmptyArray<StaffContent>;
+  label?: NonEmptyString;
+  partial?: boolean;
   key?: KeySignature;
   time?: TimeSignature;
   tempo?: Tempo;
@@ -112,15 +151,16 @@ export const Measure = {
   /**
    * Checks that every voice's written durations exactly fill the measure under
    * the given (effective) time signature. Dynamics and grace notes consume no
-   * time. `allowUnderfull` permits a short measure (an anacrusis / pickup);
-   * overfull is always an error. Messages are labeled by staff and voice but
-   * not measure number — the caller knows the measure's position.
+   * time.
+   *
+   * A `partial` measure lifts the lower bound only: it may hold less than the
+   * capacity, but never nothing, and never more. Nothing here depends on the
+   * measure's position in the score — a pickup is partial because it says so.
+   *
+   * Messages are labeled by staff and voice but not measure number — the caller
+   * knows the measure's position.
    */
-  check(
-    time: TimeSignature,
-    measure: Measure,
-    options: { allowUnderfull?: boolean } = {},
-  ): Result<void> {
+  check(time: TimeSignature, measure: Measure): Result<void> {
     const capacity = TimeSignature.capacity(time);
     const messages: string[] = [];
 
@@ -138,8 +178,16 @@ export const Measure = {
 
         if (comparison > 0) {
           messages.push(`${label} overfills the measure: ${amounts}`);
-        } else if (comparison < 0 && !options.allowUnderfull) {
+
+          return;
+        }
+
+        if (comparison === 0) return;
+
+        if (!measure.partial) {
           messages.push(`${label} underfills the measure: ${amounts}`);
+        } else if (Fraction.compare(total, Fraction.zero()) <= 0) {
+          messages.push(`${label} is empty; a partial measure still needs some duration`);
         }
       });
     });

@@ -162,9 +162,33 @@ describe('Score.check: measure fullness', () => {
     ]);
   });
 
-  it('allows an underfull first measure as a pickup', () => {
-    expectOk(
+  it('rejects an underfull first measure that does not declare itself partial', () => {
+    // Position used to grant the opening measure an exemption; now only the
+    // flag does, so a genuine pickup has to say so.
+    expectInvalid(
       Score.check(score(NonEmptyArray.of([measure(), fullThreeFour()]), { time: threeFour })),
+    );
+  });
+
+  it('allows a partial pickup measure', () => {
+    expectOk(
+      Score.check(
+        score(NonEmptyArray.of([{ ...measure(), partial: true }, fullThreeFour()]), {
+          time: threeFour,
+        }),
+      ),
+    );
+  });
+
+  it('allows a partial measure anywhere, not just at the start', () => {
+    // The pairing case the Haydn corpus is full of: a section's short closing
+    // bar completes the pickup that opened it, dozens of measures earlier.
+    expectOk(
+      Score.check(
+        score(NonEmptyArray.of([fullThreeFour(), { ...measure(), partial: true }]), {
+          time: threeFour,
+        }),
+      ),
     );
   });
 

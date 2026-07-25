@@ -71,6 +71,7 @@ const dynamicGlyphs: Record<DynamicMark, GlyphName> = {
   Fortissimo: 'dynamicFF',
   Fortississimo: 'dynamicFFF',
   Sforzando: 'dynamicSforzato',
+  Forzando: 'dynamicForzando',
   Fortepiano: 'dynamicFortePiano',
 };
 

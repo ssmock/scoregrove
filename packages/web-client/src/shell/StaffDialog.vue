@@ -27,6 +27,7 @@ const clefOptions = [
   { value: Clef.Treble, label: 'Treble' },
   { value: Clef.Bass, label: 'Bass' },
   { value: Clef.Alto, label: 'Alto' },
+  { value: Clef.Tenor, label: 'Tenor' },
 ];
 
 const flowOptions = [

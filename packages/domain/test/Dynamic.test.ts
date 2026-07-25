@@ -14,6 +14,7 @@ describe('DynamicMark', () => {
       'Fortissimo',
       'Fortississimo',
       'Sforzando',
+      'Forzando',
       'Fortepiano',
     ]);
   });
@@ -28,6 +29,7 @@ describe('DynamicMark', () => {
     expect(DynamicMark.abbreviate(DynamicMark.Fortissimo)).toBe('ff');
     expect(DynamicMark.abbreviate(DynamicMark.Fortississimo)).toBe('fff');
     expect(DynamicMark.abbreviate(DynamicMark.Sforzando)).toBe('sfz');
+    expect(DynamicMark.abbreviate(DynamicMark.Forzando)).toBe('fz');
     expect(DynamicMark.abbreviate(DynamicMark.Fortepiano)).toBe('fp');
   });
 });
@@ -40,7 +42,7 @@ describe('DynamicChange', () => {
 
 describe('Dynamic', () => {
   it('unions marks and changes', () => {
-    expect(Dynamic.values).toHaveLength(12);
+    expect(Dynamic.values).toHaveLength(13);
     expect(Dynamic.is(DynamicMark.Forte)).toBe(true);
     expect(Dynamic.is(DynamicChange.Crescendo)).toBe(true);
     expect(Dynamic.is('Loud')).toBe(false);

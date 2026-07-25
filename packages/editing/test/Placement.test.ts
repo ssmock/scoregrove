@@ -908,7 +908,7 @@ describe('Placement.toggleArticulation', () => {
   it('adds an articulation, then removes it', () => {
     const score = scoreWith([
       Note.of(g4, quarter),
-      Rest.of(Duration.of(NoteValue.Quarter, { dots: 1 })),
+      Rest.of(Duration.of(NoteValue.Half, { dots: 1 })),
     ]);
 
     const added = expectOk(

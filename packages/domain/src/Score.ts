@@ -99,8 +99,9 @@ const checkNavigation = (score: Score): string[] => {
 };
 
 /**
- * Fullness of every measure against the time signature in force there. The
- * first measure may be underfull (an anacrusis / pickup).
+ * Fullness of every measure against the time signature in force there. A
+ * measure is allowed to fall short only by declaring itself `partial` — no
+ * position is privileged, the opening anacrusis included.
  */
 const checkFullness = (score: Score): string[] => {
   const messages: string[] = [];
@@ -109,7 +110,7 @@ const checkFullness = (score: Score): string[] => {
   score.measures.forEach((measure, i) => {
     time = measure.time ?? time;
 
-    const result = Measure.check(time, measure, { allowUnderfull: i === 0 });
+    const result = Measure.check(time, measure);
 
     if (Result.isError(result)) {
       messages.push(...result.error.messages.map((m) => `Measure ${i + 1}: ${m}`));
