@@ -55,7 +55,7 @@ const hotkeysOpen = ref(false);
   padding: var(--space-4);
   overflow-y: auto;
   background: var(--color-surface);
-  border-right: 1px solid var(--color-border);
+  border-right: 2px solid var(--color-border);
 }
 
 /* Top-level chrome grouped together: the project bar and the (de-emphasized)

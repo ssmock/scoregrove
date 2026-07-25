@@ -1,22 +1,37 @@
 /*
  * Design tokens for the editor UI: hand-rolled chrome on CSS custom
- * properties, no component-library dependency. One fixed palette (dark cyan
- * on parchment) rather than switching on prefers-color-scheme — there is no
- * manual toggle, and no second variant to keep in sync.
+ * properties. A bold, high-contrast "editorial" look — warm paper, heavy ink
+ * rules, an electric-cobalt accent, and hard offset shadows (no blur) that give
+ * controls a stamped, graphic feel. The score is ink on the same paper, so the
+ * whole app reads as one designed sheet.
  */
+
+/*
+ * Bricolage Grotesque (Mathieu Triay), SIL Open Font License 1.1 — self-hosted
+ * latin-subset variable woff2, the same way Bravura is bundled. Add the OFL
+ * text alongside if redistributing.
+ */
+@font-face {
+  font-family: 'Bricolage Grotesque';
+  font-style: normal;
+  font-weight: 300 800;
+  font-display: swap;
+  src: url('./bricolage-grotesque.woff2') format('woff2');
+}
+
 :root {
-  --color-bg: #f3e9d2;
-  --color-surface: #e9dcbd;
-  --color-surface-raised: #faf4e3;
-  --color-border: #c9b78e;
-  --color-text: #073333;
-  --color-text-muted: #3f6b68;
-  --color-accent: #0e6e6b;
-  --color-accent-text: #f8f1de;
-  --color-danger: #8a3324;
-  --color-danger-text: #f8f1de;
-  --color-focus-ring: #0e6e6b;
-  --color-overlay: rgb(7 51 51 / 40%);
+  --color-bg: #f3efe4;
+  --color-surface: #eae3d3;
+  --color-surface-raised: #fdfbf5;
+  --color-border: #221f18;
+  --color-text: #1a1610;
+  --color-text-muted: #6d6656;
+  --color-accent: #2b45ef;
+  --color-accent-text: #fdfbf5;
+  --color-danger: #cf3320;
+  --color-danger-text: #fdfbf5;
+  --color-focus-ring: #2b45ef;
+  --color-overlay: rgb(26 22 16 / 34%);
 
   --space-1: 0.25rem;
   --space-2: 0.5rem;
@@ -25,19 +40,23 @@
   --space-5: 1.5rem;
   --space-6: 2rem;
 
-  --font-ui: system-ui, -apple-system, 'Segoe UI', sans-serif;
+  --font-ui: 'Bricolage Grotesque', system-ui, -apple-system, 'Segoe UI', sans-serif;
+  --text-xs: 0.6875rem;
   --text-sm: 0.8125rem;
   --text-base: 0.9375rem;
   --text-lg: 1.125rem;
+  --text-xl: 1.5rem;
   --line-height-base: 1.4;
+  --tracking-wide: 0.06em;
 
-  --radius-sm: 4px;
-  --radius-md: 8px;
-  --radius-lg: 12px;
+  --radius-sm: 3px;
+  --radius-md: 6px;
+  --radius-lg: 10px;
 
-  --shadow-sm: 0 1px 2px rgb(0 0 0 / 8%);
-  --shadow-md: 0 4px 16px rgb(0 0 0 / 12%);
-  --shadow-lg: 0 12px 40px rgb(0 0 0 / 20%);
+  /* Hard, un-blurred offset shadows — the graphic signature */
+  --shadow-sm: 2px 2px 0 var(--color-border);
+  --shadow-md: 4px 4px 0 var(--color-border);
+  --shadow-lg: 7px 7px 0 rgb(34 31 24 / 92%);
 
   /* Overlays stack in this order; each layer leaves room beneath the next */
   --z-dropdown: 100;
@@ -46,8 +65,8 @@
   --z-dialog: 310;
   --z-toast: 400;
 
-  --duration-fast: 100ms;
-  --duration-base: 160ms;
+  --duration-fast: 90ms;
+  --duration-base: 150ms;
   --easing-standard: cubic-bezier(0.2, 0, 0, 1);
 }
 
@@ -64,4 +83,6 @@ body {
   line-height: var(--line-height-base);
   color: var(--color-text);
   background: var(--color-bg);
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
 }
