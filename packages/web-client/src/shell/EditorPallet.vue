@@ -371,8 +371,10 @@ function applyTimeSignature(): void {
 .pallet__help {
   min-height: 2.6rem;
   margin: 0;
+  font-family: var(--font-display);
+  font-style: italic;
   font-size: var(--text-sm);
-  line-height: 1.35;
+  line-height: 1.4;
   color: var(--color-text-muted);
 }
 

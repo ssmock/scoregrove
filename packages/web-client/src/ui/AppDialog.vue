@@ -98,8 +98,10 @@ useDismissable(dialogRef, { active: dismissActive, onDismiss: () => emit('close'
 
 .app-dialog__title {
   margin: 0;
-  font-size: var(--text-lg);
-  font-weight: 600;
+  font-family: var(--font-display);
+  font-optical-sizing: auto;
+  font-size: var(--text-xl);
+  font-weight: 500;
 }
 
 .app-dialog__close {

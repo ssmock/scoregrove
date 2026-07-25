@@ -135,7 +135,9 @@ function confirmDelete(name: string): void {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  font-weight: 600;
+  font-family: var(--font-display);
+  font-size: var(--text-lg);
+  font-weight: 500;
 }
 
 .project-bar__name--untitled {

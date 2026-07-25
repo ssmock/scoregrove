@@ -24,11 +24,11 @@ defineProps<{ heading?: string }>();
 
 .sidebar-section__heading {
   margin: 0;
-  font-size: var(--text-sm);
-  font-weight: 600;
-  color: var(--color-text-muted);
-  text-transform: uppercase;
-  letter-spacing: 0.04em;
+  font-family: var(--font-display);
+  font-optical-sizing: auto;
+  font-size: var(--text-lg);
+  font-weight: 500;
+  color: var(--color-text);
 }
 
 .sidebar-section__body {
