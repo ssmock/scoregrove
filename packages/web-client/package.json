@@ -10,6 +10,7 @@
     "storybook": "storybook dev -p 6006",
     "build-storybook": "storybook build",
     "print:preview": "node scripts/print-preview.mjs",
+    "haydn": "node scripts/haydn.mjs",
     "test": "tsc --noEmit -p tsconfig.test.json && vitest run",
     "test:watch": "vitest"
   },

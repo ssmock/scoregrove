@@ -37,3 +37,4 @@ Thumbs.db
 
 # Live ngrok tunnel URLs (written by `pnpm tunnels`)
 .tunnels.json
+haydn-capture

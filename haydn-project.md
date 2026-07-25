@@ -216,6 +216,82 @@ each:
 
 ---
 
+## B. Estimating import accuracy
+
+"Did the import work?" recurs for every piece we ever ingest, so it should be a reusable mode of
+the importer (`--verify`) rather than a one-off script for the Haydn. These estimators are cheap,
+derived from the source file itself, and chosen so that each catches a class the others miss.
+
+**The organising principle is per-measure, not global.** A total note count lets two errors cancel
+— one note dropped in bar 12, one duplicated in bar 300, and the sum still matches. A per-measure
+digest both refuses to cancel and tells you _where_ to look, which is the difference between "the
+import is wrong" and a debuggable failure.
+
+### Tier 1 — accounting identities (always hold; cheapest, strongest)
+
+- **`consumed + unsupported == total elements`.** Every element in the file is either mapped or
+  reported, and the counts must add up. This is the only thing that actually _enforces_ the rule
+  the strategy already states — "silent dropping is the one thing this importer must never do."
+  Reporting unsupported elements does not enforce it: an element the reader believes it handled but
+  quietly discards appears in neither list. The identity closes that hole. **Build this first.**
+- **Per-part element counts** — notes, rests, chord tones, measures — source against `Score`.
+- **Paired-element arithmetic** — `<tied>` start/stop pairs versus tie chains, `<wedge>`
+  start/stop versus hairpins, `<slur>` pairs versus slur roles. Each mapping has an expected
+  relation; divergence is a bug rather than a judgement call.
+
+### Tier 2 — per-measure fingerprints (localize the error)
+
+- **Pitch sequence digest per (part, measure)** — MIDI numbers in order. Catches wrong octave,
+  wrong `<alter>`, and reordering, none of which counting can see.
+- **Duration sequence digest per (part, measure)** — catches wrong note values and mis-read dots
+  or tuplets while the count stays right.
+
+### Tier 3 — internal consistency (no source oracle needed at all)
+
+These are the ones that generalize best, because they need no expected values:
+
+- **Cross-part length agreement** — within a measure every part must span the same duration.
+  Verified true across all 531 measures × 4 parts of this corpus, and it is the sharpest available
+  check on `<backup>` / `<forward>` handling.
+- **Divisions-sum versus `Fraction`-sum** — total each part's duration in raw divisions and again
+  in exact `Fraction`s, and require exact agreement. Cross-checks the whole
+  `DivisionsToDuration` conversion independently of any note-by-note comparison.
+- **Determinism** — import twice, require identical output. Catches iteration-order leaks through
+  `Map`/`Set`.
+- **Slice consistency** — importing measures _m..n_ must equal importing everything and slicing to
+  _m..n_. Tests the `MeasureSlicing` path against the full path with no external oracle whatever.
+- **`Score.check` passes** — the domain's own invariants, free.
+
+### Tier 4 — plausibility smells (cheap, catch gross errors fast)
+
+Not proofs, but they fail loudly on whole-class mistakes and cost almost nothing:
+
+- **Pitch range per instrument** — a violin part with notes below G3 means a transposition or
+  octave bug. `<instrument-sound>` gives the instrument, so this generalizes to any score.
+- **Duration histogram shape** — if thirty-seconds outnumber quarters, something is systematically
+  misread.
+- **Accidental density** — a spike suggests key-signature mishandling, since accidentals implied
+  by the key should not be printed.
+
+### Tier 5 — downstream sanity
+
+- **Playback duration** against tempo × total beats, computed independently.
+- **Engraving invariants** — the existing list: no glyph collisions, systems fit, no note escapes
+  its measure box.
+- **Page count** against the reference PDF's 26. Crude, but an order-of-magnitude divergence is a
+  real signal.
+
+### What the hand-authored fixture is still for
+
+Every estimator above compares the importer against **the source file**. None can catch an error
+where the importer and the estimator share a misreading of MusicXML semantics — both ignoring
+`<backup>`, say. A small excerpt transcribed from the **printed page** is independent of MusicXML
+entirely, and that is its whole value. Keep it to a handful of bars: enough to pin the semantics,
+small enough that the transcription is unlikely to be wrong itself. Twenty-one bars of hand
+transcription would risk debugging the fixture instead of the importer.
+
+---
+
 ## Module checklist
 
 Ordered for implementation. Smoke test end-to-end first, breadth second, polish last.
@@ -241,12 +317,24 @@ Ordered for implementation. Smoke test end-to-end first, breadth second, polish 
       `implicit="yes"`) that themselves repeat across movements — there are four separate measures
       labelled `X1`. Any slicing, addressing, or error message keyed on `@number` will be wrong;
       positional order is the only reliable index.
-- [ ] `scripts/haydn.mjs` — the one command: import, engrave, capture per-system PNGs headlessly,
-      write them somewhere reviewable alongside the reference. Playwright-core is already known
-      to work in this environment.
-- [ ] Hand-author the movement II theme (~20 bars) as a fixture. Small enough to be honest work,
-      and it becomes the importer's correctness oracle: importing the same 20 bars must produce
-      an equivalent `Score`.
+- [x] **Capture harness, stage one** — `pnpm --filter web-client haydn [score.json] [outDir]`
+      engraves a `Score` headlessly and writes `score.png`, a `system-NNN.png` per system, and a
+      `capture.json` summary. Stage two adds the import step once Phase 1 lands; the seam is the
+      score JSON, which is exactly what `Projects.ts` persists and what the importer will emit.
+      It lives in `web-client`, not the repo root, because that is where `playwright-core` and the
+      built Storybook are — a root script cannot reach either without a dependency the workspace
+      deliberately does not have. An arbitrary score reaches the page through a dedicated
+      harness story that reads a global the script injects, since a whole `Score` is far too
+      large for Storybook's URL args. **Fails loudly rather than silently**: page and console
+      errors are collected and printed, a score that lays out no systems exits 1 with a diagnosis
+      rather than writing a blank PNG, and the browser is closed in a `finally` so a failed run
+      cannot leave Chromium alive and the process hanging.
+- [ ] Hand-author a **short excerpt** — the theme's first 2–4 bars, all four staves — transcribed
+      from the reference PDF. Deliberately not the whole 21-bar theme: this exists only to pin
+      MusicXML _semantics_ from an independent source, and a long hand transcription risks
+      becoming the thing that is wrong, leaving us debugging the fixture instead of the importer.
+      Everything else is covered by the estimators in section B, which compare against the source
+      file directly and scale to all 531 measures.
 
 ### Phase 1 — `packages/import`
 
@@ -271,7 +359,18 @@ Ordered for implementation. Smoke test end-to-end first, breadth second, polish 
       scores change divisions mid-part — but it does mean rounding bugs cannot hide behind this
       piece.
 - [ ] `MeasureSlicing` — import a measure range, not just a whole file. Required from day one,
-      because the smoke test is movement II's theme inside a 531-measure score.
+      because the smoke test is movement II's theme inside a 531-measure score. Note this is a
+      **development affordance, not the shipping shape**: the deliverable is one combined `Score`
+      (see below), and slicing exists so the smoke test can be 21 bars instead of 531.
+- [ ] `SectionAndCapoSynthesis` — **one combined `Score` for the whole work**, with movements
+      carried by `Measure.newSection` rather than by splitting into four `Score`s. Consequences the
+      importer owns, none of which the source states outright:
+      a section (title + `SectionBreak.Page`) at each movement start, taken from the `<words>`
+      title and the source's own `<print new-page>`; a section (`SectionBreak.System`) at each
+      `Var. I`–`Var. IV` and the `Trio`, matching their `<print new-system>`; and a
+      **`NavigationMark.Capo` at each movement start**, without which the Menuetto's da capo
+      rewinds to the opening of movement I. Capo marks are synthesised — the source never writes
+      one, because in MusicXML the D.C. is implicitly movement-relative.
 - [ ] `PitchReading` — `<pitch>`/`<alter>`/`<octave>` → domain `Pitch`; `<rest>` → `Rest`;
       simultaneous notes with `<chord/>` folded into `Chord`.
 - [ ] `NotationReading` — ties, slurs, articulations, fermatas, grace notes, tuplets, dynamics,
@@ -279,8 +378,13 @@ Ordered for implementation. Smoke test end-to-end first, breadth second, polish 
       being silently dropped — **silent dropping is the one thing this importer must never do.**
 - [ ] `StructureReading` — barlines, repeats, endings/voltas, segno/coda/D.C./D.S., so
       `NavigationUnfolding` gets real navigation to unfold.
-- [ ] `ImportReport` — `{ score, unsupported: Histogram, warnings }`. A `Result`, consistent with
-      the rest of the domain. The histogram is the deliverable that ranks all subsequent work.
+- [ ] `ImportReport` — `{ score, consumed: Histogram, unsupported: Histogram, warnings }`. A
+      `Result`, consistent with the rest of the domain. The unsupported histogram ranks all
+      subsequent work; the **consumed** histogram exists so `consumed + unsupported` can be checked
+      against the file's total element count (section B, tier 1) — the accounting identity that
+      turns "never drop silently" from an intention into something enforced.
+- [ ] `Verification` — the reusable `--verify` mode implementing section B's estimators, so every
+      future import gets them for free rather than re-deriving a one-off script per piece.
 - [ ] CLI entry — `pnpm --filter @scoregrove/import run <file>` writing score JSON plus the
       report. Score JSON must be loadable by `Projects.ts` as-is.
 - [ ] Vitest suite — round-trip the hand-authored theme, plus focused fixtures per reader module.
@@ -296,11 +400,22 @@ untouched.
 Ordered by measured impact. The first two are one-member additions that are nonetheless hard
 blockers — they came out of the census, not the original prediction.
 
-- [ ] **`Clef.Tenor`** — the cello's C4 passage is otherwise unrepresentable. One member; do it
-      first because it is the cheapest correctness win in the project.
-- [ ] **`DynamicMark.Forzando` (`fz`)** — 149 occurrences, the most common dynamic in the work.
-      Distinct from the existing `Sforzando` (`sfz`) in print, so it needs its own member rather
-      than a mapping.
+- [x] **`Clef.Tenor`** — the cello's C4 passage is otherwise unrepresentable. Landed with the four
+      engraving sites the `Record<Clef, …>` types flushed out. The one surprise: tenor is the only
+      clef whose key signature is _not_ a uniform shift of the treble pattern — F♯ and G♯ would sit
+      above the top line, so both drop an octave, giving tenor sharps their own explicit pattern.
+- [x] **`DynamicMark.Forzando` (`fz`)** — 149 occurrences, the most common dynamic in the work.
+      Distinct from the existing `Sforzando` (`sfz`) in print, so it got its own member rather than
+      a mapping. `dynamicForzando` added to the Bravura extraction list.
+- [x] **`Measure.label`** — a source's own bar numbering, display-only. Deliberately not named
+      `number`, because in this corpus four measures are labelled `0`, fifteen carry `X1`–`X6`, and
+      `X1` occurs four separate times. Position is the only identity.
+- [x] **`Measure.partial`** — the fullness opt-out. The corpus has **22 short measures**, and every
+      one is half of a pair (a section's pickup completed by its closing bar), so the old
+      "measure 0 only" exemption could not have imported even a single movement. `Score.check` now
+      has no positional rule at all.
+- [x] **`NavigationMark.Capo`** and **`Measure.newSection`** — the movement-structure work; see the
+      trap 1 resolution below.
 - [ ] **`Part`** — identity: full name, short name, and a sound/instrument reference for playback
       (`<instrument-sound>strings.violin|viola|cello` is present and usable). A part owns one _or
       more_ staves (quartet: 4 parts × 1 staff; piano: 1 part × 2 staves). Replaces the bare
@@ -310,19 +425,33 @@ blockers — they came out of the census, not the original prediction.
       line) and whether barlines run through the group. Nestable, because MusicXML's groups are.
       For the quartet: one bracket over all four, barlines joined. Affects engraving's
       `VerticalLayout` and `SystemLayout`.
-- [ ] **Slur numbering** — make overlapping and nested slurs distinguishable. Touches
-      `Notations`, engraving's `Slurs`, and the importer's `NotationReading` simultaneously.
+- [ ] **Slur numbering** — make overlapping and nested slurs distinguishable; touches `Notations`,
+      engraving's `Slurs`, and the importer's `NotationReading` at once. **Downgraded on
+      measurement:** section A called this the dominant domain change on the strength of 2,416
+      slurs, but raw count is not ambiguity — **2,400 are `number="1"`, only 16 are `number="2"`,
+      and the whole work has just 8 moments with two slurs open at once.** The smoke-test theme
+      has 140 slurs, every one `number="1"`, zero overlap, so `SlurRole`'s Begin/End is fully
+      sufficient there. A real gap that will mis-engrave 8 places in 531 measures — not a blocker.
+      Do it when those 8 places matter, not before.
 - [ ] **Ornaments in the domain, not derived** (review item 4) — `ornaments?` on `Notations`.
       The census narrows the needed set to **trill and turn**; add inverted turn and the mordents
       only if a later piece asks. A trill cannot be inferred from pitches, so deriving it was
       never an option, and both pipelines interpret it differently (engraving prints glyph + wavy
       extension; playback realizes the alternation). Follows the fermata precedent `Notations.ts`
       already sets.
-- [ ] **Movement-structure text → domain concepts.** `Fine`, `Menuetto D.C.`, and `Trio` are
-      encoded as free `<words>`, but `Navigation` models them properly. The importer must
-      recognize these rather than pass them through as annotations, or the Menuetto's da capo
-      will not unfold. `la seconda volta più presto` is a repeat-dependent tempo change that is
-      **not representable today** — report it and decide deliberately.
+- [ ] **Movement structure — ✅ RESOLVED (trap 1), with one correction.** I had this wrong: the
+      navigation is **not** prose. `Fine` and the Menuetto's da capo are structurally encoded as
+      `<sound fine="yes">` (idx 294) and `<sound dacapo="yes">` (idx 340), with the `<words>` at
+      those measures being duplicates. So the importer reads attributes, not text. Two details:
+      those `<sound>` attributes sit on **Violin I only**, so they need hoisting to the measure in
+      `PartwiseToTimewise`; and `dacapo` plus a Fine implies `DaCapoAlFine` rather than bare
+      `DaCapo`. `Trio` genuinely is prose-only, but it is a **section label**, not navigation, so
+      it lands in `Measure.newSection` alongside the movement titles and `Var. I`–`Var. IV`.
+      Sections carry a title and a break strength (`System` / `Page` — the source's own `<print>`
+      gives movements a page and interior sections a system), and playback ignores them entirely.
+      `NavigationMark.Capo` covers a da capo that must return somewhere other than measure 0.
+      Still not representable: `la seconda volta più presto` (idx 108), a repeat-dependent tempo
+      change — report it and decide deliberately.
 
 _Deferred by the census, not dropped:_ arpeggio and tremolo modeling (zero occurrences), and
 bowing/technique directions (zero `<technical>` elements). Both are Beethoven-tier work. The
