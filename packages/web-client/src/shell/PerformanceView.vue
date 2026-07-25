@@ -23,7 +23,7 @@ function print(): void {
 
 <template>
   <div class="performance-view">
-    <div class="performance-view__stage">
+    <div class="performance-view__stage score-paper">
       <ScoreDisplay
         :score="store.state.score"
         flow="vertical"
@@ -52,6 +52,9 @@ function print(): void {
   position: relative;
   height: 100vh;
   overflow: auto;
+  padding: var(--space-6) var(--space-6) 0;
+  background:
+    radial-gradient(140% 70% at 50% -20%, rgb(255 255 255 / 4%), transparent 55%), var(--color-bg);
 }
 
 /* An auto-height wrapper (not the height:100% ScoreDisplay root) so the score
@@ -62,8 +65,10 @@ function print(): void {
      wide) as the on-screen stand-in for "a page" — printing itself isn't
      bound by this, see print.css. */
   max-width: 8.5in;
+  min-height: calc(100vh - 2 * var(--space-6));
   margin: 0 auto;
-  padding: var(--space-5) var(--space-5) 6rem;
+  padding: var(--space-6) var(--space-6) 6rem;
+  border-radius: var(--radius-sm);
 }
 
 .performance-view__corner {
