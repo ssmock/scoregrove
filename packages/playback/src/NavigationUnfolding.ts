@@ -26,6 +26,14 @@ import type { Score } from '@scoregrove/domain/Score';
  *     repeats are not taken again (each plays through a single time).
  *   - On that post-jump traversal, volta groups take their final ending (the
  *     passage that continues onward), skipping earlier ones.
+ *
+ * A da capo returns to the nearest preceding `Capo` mark, falling back to
+ * measure 0 when the score has none. **This does not amount to multi-section
+ * support.** Segno, Coda, and Fine are still resolved to their *first*
+ * occurrence in the score, so a score holding several sections that each carry
+ * their own would mis-resolve all three. Only the da capo target is
+ * section-relative, because only it was wrong for a score that legitimately
+ * starts somewhere other than its first measure.
  */
 
 /** One measure to play, tagged with which time through it this is (1 = first sounding, 2 = second, …). */
@@ -133,6 +141,20 @@ export const NavigationUnfolding = {
     const segnoIndex = Math.max(0, markIndex(NavigationMark.Segno));
     const codaIndex = markIndex(NavigationMark.Coda);
     const fineIndex = markIndex(NavigationMark.Fine);
+
+    /**
+     * Where a da capo at `from` returns to: the nearest preceding Capo mark,
+     * or measure 0 when there is none — "the head" of an ordinary single-
+     * section score. Searching backward rather than taking the first Capo is
+     * what lets several sections each carry their own.
+     */
+    const capoIndexAt = (from: number): number => {
+      for (let i = from; i >= 0; i -= 1) {
+        if (measures[i].marks?.includes(NavigationMark.Capo)) return i;
+      }
+
+      return 0;
+    };
     const voltas = voltaInfo(measures);
 
     const output: PlayStep[] = [];
@@ -219,7 +241,7 @@ export const NavigationUnfolding = {
           if (alFineJumps.has(jump)) stopAtFine = true;
           if (alCodaJumps.has(jump)) toCodaActive = true;
 
-          pos = dalSegnoJumps.has(jump) ? segnoIndex : 0;
+          pos = dalSegnoJumps.has(jump) ? segnoIndex : capoIndexAt(pos);
           continue;
         }
       }

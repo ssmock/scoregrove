@@ -1,6 +1,28 @@
 import type { Meta, StoryObj } from '@storybook/vue3-vite';
+import { NewSection, SectionBreak } from '@scoregrove/domain/Measure';
+import { NonEmptyArray } from '@scoregrove/domain/NonEmptyArray';
+import { NonEmptyString } from '@scoregrove/domain/NonEmptyString';
 import { Fixtures } from '@scoregrove/engraving/Fixtures';
 import ScoreView from './ScoreView.vue';
+
+/** The melody fixture with a titled section opening partway through */
+const sectioned = () => {
+  const score = Fixtures.monophonicMelody();
+
+  return {
+    ...score,
+    measures: NonEmptyArray.of(
+      score.measures.map((measure, index) =>
+        index === 2
+          ? {
+              ...measure,
+              newSection: NewSection.of(NonEmptyString.of('Var. I'), SectionBreak.System),
+            }
+          : measure,
+      ),
+    ),
+  };
+};
 
 /**
  * The full rendering demo of the strategy: each fixture score through the
@@ -45,4 +67,13 @@ export const TwoStaffMultiVoice: Story = {
 /** No explicit width: the score re-breaks as its container resizes */
 export const ResizeDriven: Story = {
   args: { score: Fixtures.monophonicMelody(), scale: 10 },
+};
+
+/**
+ * Sections: a titled heading opens a new system even where the width would
+ * happily have kept going. The width is deliberately generous, so the break
+ * you see is the section's doing and nothing else.
+ */
+export const Sections: Story = {
+  args: { score: sectioned(), width: 120, scale: 12 },
 };

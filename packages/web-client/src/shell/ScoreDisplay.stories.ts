@@ -1,5 +1,8 @@
 import type { Meta, StoryObj } from '@storybook/vue3-vite';
 import { Duration, NoteValue } from '@scoregrove/domain/Duration';
+import { NewSection, SectionBreak } from '@scoregrove/domain/Measure';
+import { NonEmptyArray } from '@scoregrove/domain/NonEmptyArray';
+import { NonEmptyString } from '@scoregrove/domain/NonEmptyString';
 import { Fixtures } from '@scoregrove/engraving/Fixtures';
 import { withEditorStore } from '../store/storybook';
 import { useEditorStore } from '../store/useEditorStore';
@@ -8,11 +11,34 @@ import ScoreDisplay from './ScoreDisplay.vue';
 const meta: Meta<typeof ScoreDisplay> = {
   title: 'Shell/ScoreDisplay',
   component: ScoreDisplay,
+  // ScoreDisplay injects the editor store for playback state, so every story
+  // needs one provided or its setup throws and nothing renders at all. Stories
+  // that drive the store themselves override this with their own instance.
+  decorators: [withEditorStore()],
 };
 
 export default meta;
 
 type Story = StoryObj<typeof meta>;
+
+/** The melody fixture with a section opening at measure 2 */
+const sectioned = () => {
+  const score = Fixtures.monophonicMelody();
+
+  return {
+    ...score,
+    measures: NonEmptyArray.of(
+      score.measures.map((measure, index) =>
+        index === 2
+          ? {
+              ...measure,
+              newSection: NewSection.of(NonEmptyString.of('Var. I'), SectionBreak.Page),
+            }
+          : measure,
+      ),
+    ),
+  };
+};
 
 export const Vertical: Story = {
   args: { score: Fixtures.monophonicMelody(), flow: 'vertical' },
@@ -32,6 +58,21 @@ export const Horizontal: Story = {
 };
 
 /** A hidden staff never reaches the renderer at all */
+/**
+ * Horizontal flow is one continuous scrolling line for DAW-style editing, and
+ * a section must not interrupt it — no break, no heading. Same fixture as
+ * `Horizontal`, with a section on measure 2 that should make no difference.
+ */
+export const HorizontalWithSection: Story = {
+  args: { score: sectioned(), flow: 'horizontal' },
+  decorators: [
+    (story) => ({
+      components: { story },
+      template: '<div style="height: 300px; width: 400px;"><story /></div>',
+    }),
+  ],
+};
+
 export const WithAHiddenStaff: Story = {
   args: {
     score: Fixtures.twoStaffMultiVoice(),

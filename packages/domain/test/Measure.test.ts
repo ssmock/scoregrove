@@ -3,7 +3,7 @@ import { ClosingBarline } from '../src/Barline';
 import { Clef } from '../src/Clef';
 import { Duration, NoteValue, Tuplet } from '../src/Duration';
 import { DynamicMark } from '../src/Dynamic';
-import { Measure, StaffContent, Voice } from '../src/Measure';
+import { Measure, NewSection, SectionBreak, StaffContent, Voice } from '../src/Measure';
 import { DynamicElement, Note, Rest } from '../src/MeasureElement';
 import { NavigationMark } from '../src/Navigation';
 import { NonEmptyArray } from '../src/NonEmptyArray';
@@ -72,6 +72,26 @@ describe('Measure', () => {
     const measure = expectOk(Measure.create({ contents: contents() }));
 
     expect(measure.label).toBeUndefined();
+  });
+
+  it('begins a section at the measure carrying it', () => {
+    // Position is implicit — the section runs until the next one — so there
+    // is no range to validate and nothing that can dangle.
+    const measure = expectOk(
+      Measure.create({
+        contents: contents(),
+        newSection: NewSection.of(NonEmptyString.of('II. Poco adagio'), SectionBreak.Page),
+      }),
+    );
+
+    expect(measure.newSection).toEqual({ title: 'II. Poco adagio', break: 'Page' });
+  });
+
+  it('allows a section with neither title nor break', () => {
+    // An untitled section still means something: it breaks the system.
+    const measure = expectOk(Measure.create({ contents: contents(), newSection: NewSection.of() }));
+
+    expect(measure.newSection).toEqual({});
   });
 
   it('accepts repeatTimes alongside a RepeatClose barline', () => {

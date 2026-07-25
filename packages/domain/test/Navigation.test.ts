@@ -4,7 +4,7 @@ import { expectVocabulary } from './helpers';
 
 describe('NavigationMark', () => {
   it('covers the landmarks', () => {
-    expectVocabulary(NavigationMark, ['Segno', 'Coda', 'Fine']);
+    expectVocabulary(NavigationMark, ['Segno', 'Coda', 'Fine', 'Capo']);
   });
 });
 

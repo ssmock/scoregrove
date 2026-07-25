@@ -12,6 +12,52 @@ import { Result } from './Result';
 import type { Tempo } from './Tempo';
 import { TimeSignature, type Swing } from './TimeSignature';
 import { reduceDistinct } from './Utils';
+import { vocabulary } from './Vocabulary';
+
+const sectionBreakMembers = {
+  System: 'System',
+  Page: 'Page',
+} as const;
+
+/**
+ * How hard a new section breaks from what precedes it: onto a fresh system, or
+ * onto a fresh page. Movements conventionally take a page and interior
+ * sections (variations, a trio) a system, but that is a default rather than a
+ * rule, so it is stored rather than inferred.
+ */
+export type SectionBreak = (typeof sectionBreakMembers)[keyof typeof sectionBreakMembers];
+
+export const SectionBreak = {
+  ...sectionBreakMembers,
+  ...vocabulary<SectionBreak>(sectionBreakMembers),
+};
+
+/**
+ * A section beginning at the measure that carries it — a movement, a
+ * variation, a trio. Position is implicit: the section runs until the next
+ * one, which makes sections contiguous, ordered, and non-overlapping by
+ * construction, with no ranges to validate and no indices that can dangle.
+ *
+ * Deliberately flat and deliberately presentational. Sections do not nest, so
+ * a trio inside a minuet is a sibling of it rather than a child; and nothing
+ * in playback consults them. Landmark resolution is relative to a *jump* (see
+ * `NavigationMark.Capo`), not to a section, because the two do not coincide —
+ * a da capo can sit inside one section while the Fine it seeks lies in
+ * another.
+ */
+export type NewSection = {
+  title?: NonEmptyString;
+  break?: SectionBreak;
+};
+
+export const NewSection = {
+  of(title?: NonEmptyString, sectionBreak?: SectionBreak): NewSection {
+    return {
+      ...(title ? { title } : {}),
+      ...(sectionBreak ? { break: sectionBreak } : {}),
+    };
+  },
+};
 
 /**
  * A single melodic or rhythmic line within one staff. Multiple voices let one
@@ -66,6 +112,7 @@ export const StaffContent = {
  * - `jump` is a navigation instruction taking effect at the end of this measure
  * - `label` is what an imported source *calls* this measure, for display only
  * - `partial` opts this measure out of the fullness rule (see below)
+ * - `newSection` begins a titled section here (a movement, variation, trio)
  *
  * ## `label` is not an index
  *
@@ -105,6 +152,7 @@ export type Measure = {
   contents: NonEmptyArray<StaffContent>;
   label?: NonEmptyString;
   partial?: boolean;
+  newSection?: NewSection;
   key?: KeySignature;
   time?: TimeSignature;
   tempo?: Tempo;

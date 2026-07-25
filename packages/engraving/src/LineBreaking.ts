@@ -63,10 +63,14 @@ export const LineBreaking = {
     let current: number[] = [];
     let currentWidth = 0;
 
-    score.measures.forEach((_measure, measureIndex) => {
+    score.measures.forEach((measure, measureIndex) => {
       const width = layoutAt(measureIndex, current.length === 0, 1)[0]?.width ?? 0;
 
-      if (current.length && currentWidth + width > options.width) {
+      // A new section always opens a system, however much room is left on the
+      // current one — the only break the fill doesn't decide for itself.
+      const forced = measure.newSection !== undefined;
+
+      if (current.length && (forced || currentWidth + width > options.width)) {
         systems.push(current);
         current = [measureIndex];
         currentWidth = layoutAt(measureIndex, true, 1)[0]?.width ?? 0;
@@ -90,6 +94,8 @@ export const LineBreaking = {
         return entry;
       });
 
+      const section = indices.length ? score.measures[indices[0]].newSection : undefined;
+
       return {
         measures,
         staffYs: SystemLayout.staffYs(score.staves.length),
@@ -100,6 +106,7 @@ export const LineBreaking = {
         top: 0,
         bottom: 4,
         width: x,
+        ...(section ? { section } : {}),
       };
     };
 

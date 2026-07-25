@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue';
+import { SectionBreak } from '@scoregrove/domain/Measure';
 import type { Score } from '@scoregrove/domain/Score';
 import { InteractionGeometry, type StaffHit } from '@scoregrove/editing/InteractionGeometry';
 import { ScoreLayout } from '@scoregrove/engraving/ScoreLayout';
@@ -118,27 +119,41 @@ function onContextmenu(
 <template>
   <div ref="root" class="score-view">
     <ScoreHeader :title="laidOut.title" :composer="laidOut.composer" />
-    <SystemView
-      v-for="(system, index) in laidOut.systems"
-      :key="index"
-      :system="system"
-      :scale="props.scale"
-      :labels="index === 0 ? laidOut.staffLabels : []"
-      :bar-handles="props.barHandles"
-      :is-last-system="index === laidOut.systems.length - 1"
-      :loop-start="props.loopStart"
-      :loop-end="props.loopEnd"
-      @hover="(point) => onHover(index, point)"
-      @leave="emit('leave')"
-      @activate="(point) => onActivate(index, point)"
-      @contextmenu="(point) => onContextmenu(index, point)"
-      @barclick="(payload) => emit('barclick', payload)"
-      @barcontextmenu="(payload) => emit('barcontextmenu', payload)"
-    >
-      <template #overlay>
-        <slot name="overlay" :system-index="index" />
-      </template>
-    </SystemView>
+    <template v-for="(system, index) in laidOut.systems" :key="index">
+      <!--
+        A section heading is gross structure, so it sits in HTML above the
+        system rather than inside its SVG. Rendered even when untitled, since
+        the element is what carries a page break.
+      -->
+      <div
+        v-if="system.section"
+        class="score-view__section"
+        :class="{ 'score-view__section--page': system.section.break === SectionBreak.Page }"
+      >
+        <h2 v-if="system.section.title" class="score-view__section-title">
+          {{ system.section.title }}
+        </h2>
+      </div>
+      <SystemView
+        :system="system"
+        :scale="props.scale"
+        :labels="index === 0 ? laidOut.staffLabels : []"
+        :bar-handles="props.barHandles"
+        :is-last-system="index === laidOut.systems.length - 1"
+        :loop-start="props.loopStart"
+        :loop-end="props.loopEnd"
+        @hover="(point) => onHover(index, point)"
+        @leave="emit('leave')"
+        @activate="(point) => onActivate(index, point)"
+        @contextmenu="(point) => onContextmenu(index, point)"
+        @barclick="(payload) => emit('barclick', payload)"
+        @barcontextmenu="(payload) => emit('barcontextmenu', payload)"
+      >
+        <template #overlay>
+          <slot name="overlay" :system-index="index" />
+        </template>
+      </SystemView>
+    </template>
   </div>
 </template>
 
@@ -147,5 +162,29 @@ function onContextmenu(
   display: flex;
   flex-direction: column;
   align-items: flex-start;
+}
+
+.score-view__section {
+  align-self: stretch;
+  font-family: Georgia, 'Times New Roman', serif;
+  text-align: center;
+}
+
+.score-view__section-title {
+  margin: 1.5rem 0 0.5rem;
+  font-size: 1.15rem;
+  font-weight: 600;
+}
+
+/*
+ * The layout tree has no page concept — systems simply stack — so a Page
+ * break is honored here, by the one part of the stack that knows about pages
+ * at all. On screen it reads the same as a system break, which is correct:
+ * there is nothing to break onto.
+ */
+@media print {
+  .score-view__section--page {
+    break-before: page;
+  }
 }
 </style>

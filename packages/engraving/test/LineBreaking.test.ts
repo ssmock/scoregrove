@@ -1,4 +1,7 @@
 import { describe, expect, it } from 'vitest';
+import { NewSection, SectionBreak } from '@scoregrove/domain/Measure';
+import { NonEmptyArray } from '@scoregrove/domain/NonEmptyArray';
+import { NonEmptyString } from '@scoregrove/domain/NonEmptyString';
 import { Fixtures } from '../src/Fixtures';
 import { LineBreaking } from '../src/LineBreaking';
 import { ScoreLayout } from '../src/ScoreLayout';
@@ -63,6 +66,74 @@ describe('LineBreaking.breakIntoSystems', () => {
 
     expect(stretched.signatures).toEqual(natural.signatures);
     expect(stretched.width).toBeGreaterThan(natural.width);
+  });
+
+  it('opens a system at a new section even when the current one has room', () => {
+    const unbroken = SystemLayout.unbroken(melody);
+    const sectioned = {
+      ...melody,
+      measures: NonEmptyArray.of(
+        melody.measures.map((measure, index) =>
+          index === 2
+            ? { ...measure, newSection: NewSection.of(NonEmptyString.of('Var. I')) }
+            : measure,
+        ),
+      ),
+    };
+
+    // Width that would otherwise hold the whole piece on one system.
+    const systems = LineBreaking.breakIntoSystems(sectioned, { width: unbroken.width + 10 });
+
+    expect(systems).toHaveLength(2);
+    expect(systems[0].measures.map((m) => m.index)).toEqual([0, 1]);
+    expect(systems[1].measures.map((m) => m.index)).toEqual([2, 3]);
+  });
+
+  it('hands the section to the system that opens it, and to no other', () => {
+    const unbroken = SystemLayout.unbroken(melody);
+    const sectioned = {
+      ...melody,
+      measures: NonEmptyArray.of(
+        melody.measures.map((measure, index) =>
+          index === 2
+            ? {
+                ...measure,
+                newSection: NewSection.of(NonEmptyString.of('Trio'), SectionBreak.Page),
+              }
+            : measure,
+        ),
+      ),
+    };
+
+    const systems = LineBreaking.breakIntoSystems(sectioned, { width: unbroken.width + 10 });
+
+    expect(systems[0].section).toBeUndefined();
+    expect(systems[1].section).toEqual({ title: 'Trio', break: SectionBreak.Page });
+  });
+
+  it('leaves the unbroken (horizontal-flow) layout entirely alone', () => {
+    // Horizontal flow is one continuous line for DAW-style editing — it must
+    // never break, sections included. It takes SystemLayout.unbroken rather
+    // than this module, and this pins that: identical geometry either way.
+    const plain = SystemLayout.unbroken(melody);
+    const sectioned = SystemLayout.unbroken({
+      ...melody,
+      measures: NonEmptyArray.of(
+        melody.measures.map((measure, index) =>
+          index === 2
+            ? {
+                ...measure,
+                newSection: NewSection.of(NonEmptyString.of('Var. I'), SectionBreak.Page),
+              }
+            : measure,
+        ),
+      ),
+    });
+
+    expect(sectioned.measures).toHaveLength(melody.measures.length);
+    expect(sectioned.measures.map((m) => m.x)).toEqual(plain.measures.map((m) => m.x));
+    expect(sectioned.width).toBe(plain.width);
+    expect(sectioned.section).toBeUndefined();
   });
 
   it('gives an over-wide measure its own overflowing system', () => {

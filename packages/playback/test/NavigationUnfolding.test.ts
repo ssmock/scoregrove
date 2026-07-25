@@ -116,6 +116,8 @@ describe('NavigationUnfolding.unfold', () => {
 
   it('unfolds a simple da capo al fine', () => {
     // A | B(Fine) | C(D.C. al Fine)  →  A B C  A B(stop at Fine)
+    // Carrying no Capo mark, this also pins the fallback: a da capo with
+    // nothing to return to returns to measure 0, as it always did.
     expect(
       order([
         measure(),
@@ -139,6 +141,34 @@ describe('NavigationUnfolding.unfold', () => {
         measure({ jump: NavigationJump.DalSegnoAlCoda }),
       ]),
     ).toEqual([0, 1, 2, 3, 4, 5, 1, 2, 4, 5]);
+  });
+
+  it('returns a da capo to the nearest preceding Capo, not measure 0', () => {
+    // The Menuetto/Trio shape that motivated the mark: an earlier section
+    // (0, 1) precedes the one the D.C. belongs to. Without a Capo the jump
+    // would rewind to 0 and replay the earlier section entirely.
+    // A | B | Capo C(Fine) | D | E(D.C. al Fine)  →  A B C D E  C(stop at Fine)
+    expect(
+      order([
+        measure(),
+        measure(),
+        measure({ marks: NonEmptyArray.of([NavigationMark.Capo, NavigationMark.Fine]) }),
+        measure(),
+        measure({ jump: NavigationJump.DaCapoAlFine }),
+      ]),
+    ).toEqual([0, 1, 2, 3, 4, 2]);
+  });
+
+  it('picks the nearest preceding Capo when several sections carry one', () => {
+    // Capo A | B | Capo C | D(D.C.) → the second Capo governs, not the first.
+    expect(
+      order([
+        measure({ marks: NonEmptyArray.of([NavigationMark.Capo]) }),
+        measure(),
+        measure({ marks: NonEmptyArray.of([NavigationMark.Capo]) }),
+        measure({ jump: NavigationJump.DaCapo }),
+      ]),
+    ).toEqual([0, 1, 2, 3, 2, 3]);
   });
 
   it('does not take inner repeats again after a da capo', () => {

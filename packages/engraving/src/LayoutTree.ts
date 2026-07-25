@@ -1,4 +1,5 @@
 import type { ClosingBarline, OpeningBarline } from '@scoregrove/domain/Barline';
+import type { NewSection } from '@scoregrove/domain/Measure';
 import type { GlyphName } from './Bravura';
 import type { StaffPosition } from './StaffPosition';
 import type { StemDirection } from './Stems';
@@ -268,4 +269,11 @@ export type LaidOutSystem = {
   /** The content's bottommost y, below the last staff (≥ its bottom line) */
   bottom: number;
   width: number;
+  /**
+   * Set when this system opens a new section, carrying that section's heading
+   * and how hard it breaks. The heading is gross structure — centered above
+   * the system, like the score's own title — so it belongs to the HTML side of
+   * the split rather than inside the system's SVG.
+   */
+  section?: NewSection;
 };
