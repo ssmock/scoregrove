@@ -5,10 +5,15 @@ import { DynamicMark } from '@scoregrove/domain/Dynamic';
 import { Fraction } from '@scoregrove/domain/Fraction';
 import type { Measure } from '@scoregrove/domain/Measure';
 import type { Chord, MeasureElement, Note, Rest } from '@scoregrove/domain/MeasureElement';
-import { Syllabic, type Articulation, type GraceNote } from '@scoregrove/domain/Notations';
+import {
+  Syllabic,
+  type Articulation,
+  type GraceNote,
+  type Ornament,
+} from '@scoregrove/domain/Notations';
 import type { Accidental } from '@scoregrove/domain/Pitch';
 import { TimeSignature } from '@scoregrove/domain/TimeSignature';
-import { engravingDefaults } from './Bravura';
+import { engravingDefaults, type GlyphName } from './Bravura';
 import { Accidentals } from './Accidentals';
 import { Annotations } from './Annotations';
 import { Beaming } from './Beaming';
@@ -60,6 +65,9 @@ const lyricSize = 1.8;
 
 /** Breathing room a syllable keeps from its column neighbors */
 const lyricPad = 0.6;
+
+/** Breathing room between stacked marks above an element */
+const stackGap = 0.35;
 
 /** Grace notes render at this fraction of full size */
 const graceScale = 0.6;
@@ -658,6 +666,7 @@ const layoutGraces = (
  */
 const attachmentsOf = (args: {
   articulations?: readonly Articulation[];
+  ornaments?: readonly Ornament[];
   fermata?: boolean;
   centerX: number;
   /** The notehead edge y on the articulation side */
@@ -665,7 +674,11 @@ const attachmentsOf = (args: {
   /** The topmost y the element reaches (stem tip included) */
   topY: number;
   side: 'above' | 'below';
-}): { articulations?: LaidOutGlyph[]; fermata?: LaidOutGlyph } => {
+}): {
+  articulations?: LaidOutGlyph[];
+  ornaments?: LaidOutGlyph[];
+  fermata?: LaidOutGlyph;
+} => {
   const { centerX, edgeY, topY, side } = args;
   const step = side === 'below' ? 1.2 : -1.2;
 
@@ -679,16 +692,39 @@ const attachmentsOf = (args: {
     };
   });
 
+  /**
+   * Ornaments and the fermata stack upward from the element, each placed by
+   * its **own bounding box** rather than a fixed step. A uniform step cannot
+   * work: the trill glyph is 1.56 staff spaces tall against the fermata's
+   * 1.32, so anything smaller than the tallest overlaps — which is exactly
+   * what a fixed 1.2 did, discovered by looking at a rendered fixture.
+   *
+   * `ceiling` is the topmost y anything has claimed so far; a glyph is placed
+   * with its *bottom* on that ceiling and then raises it by its own height.
+   */
+  let ceiling = Math.min(-1.5, topY - stackGap);
+
+  const place = (glyph: GlyphName): LaidOutGlyph => {
+    const { bBoxNE, bBoxSW } = Glyphs.data(glyph);
+    const y = ceiling + bBoxSW[1];
+
+    ceiling = y - bBoxNE[1] - stackGap;
+
+    return { glyph, x: centerX - Glyphs.width(glyph) / 2, y };
+  };
+
+  // Ornaments always print above, whichever way the stem points — a trill
+  // belongs over the note it decorates, not tucked beneath it.
+  const ornaments = args.ornaments?.map((ornament) => place(Glyphs.forOrnament(ornament)));
+
+  // A fermata sits above everything, ornaments included.
   const fermata: LaidOutGlyph | undefined = args.fermata
-    ? {
-        glyph: Glyphs.forFermata('above'),
-        x: centerX - Glyphs.width(Glyphs.forFermata('above')) / 2,
-        y: Math.min(-1.5, topY - 1.2),
-      }
+    ? place(Glyphs.forFermata('above'))
     : undefined;
 
   return {
     ...(articulations?.length ? { articulations } : {}),
+    ...(ornaments?.length ? { ornaments } : {}),
     ...(fermata ? { fermata } : {}),
   };
 };
@@ -767,6 +803,7 @@ const layoutNote = (
   const side: 'above' | 'below' = stem && stem.direction === StemDirection.Up ? 'below' : 'above';
   const attachments = attachmentsOf({
     ...(note.articulations ? { articulations: note.articulations } : {}),
+    ...(note.ornaments ? { ornaments: note.ornaments } : {}),
     ...(note.fermata ? { fermata: note.fermata } : {}),
     centerX: x + headWidth / 2,
     edgeY: side === 'below' ? y + 0.5 : y - 0.5,
@@ -920,6 +957,7 @@ const layoutChord = (
   const side: 'above' | 'below' = stem && stem.direction === StemDirection.Up ? 'below' : 'above';
   const attachments = attachmentsOf({
     ...(chord.articulations ? { articulations: chord.articulations } : {}),
+    ...(chord.ornaments ? { ornaments: chord.ornaments } : {}),
     ...(chord.fermata ? { fermata: chord.fermata } : {}),
     centerX: x + headWidth / 2,
     edgeY: side === 'below' ? StaffPosition.y(lowest) + 0.5 : StaffPosition.y(highest) - 0.5,

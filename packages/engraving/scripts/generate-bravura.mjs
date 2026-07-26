@@ -93,6 +93,9 @@ const glyphNames = [
   'articStaccatissimoBelow',
   'articMarcatoAbove',
   'articMarcatoBelow',
+  // Ornaments
+  'ornamentTrill',
+  'ornamentTurn',
   // Holds
   'fermataAbove',
   'fermataBelow',

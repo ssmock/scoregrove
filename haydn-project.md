@@ -338,26 +338,64 @@ Ordered for implementation. Smoke test end-to-end first, breadth second, polish 
 
 ### Phase 1 — `packages/import`
 
-- [ ] Package skeleton — `packages/import`, depends on domain plus exactly one runtime
-      dependency, **`@rgrove/parse-xml`** (review item 2). Same build/test/export scheme as
-      playback and engraving. No barrels.
-- [ ] `XmlReading` — parse to a node tree. Uncompressed `.musicxml` only; `.mxl` is deliberately
-      out of scope for v1 (review item 3). Reject any document whose DOCTYPE is missing or whose
-      root is neither `score-partwise` nor `score-timewise`, and refuse `score-timewise` with a
-      clear message rather than half-supporting it.
-- [ ] `PartwiseToTimewise` — the core transposition. Walk parts in parallel, emit one `Measure`
-      per measure index with one `StaffContent` per staff. This is where MusicXML's per-part
-      duplication of key/time/tempo/barline gets **reconciled** into the score-wide attributes
-      our `Measure` carries — including deciding what to do when parts disagree (report and take
-      the first, most likely).
-- [ ] `DivisionsToDuration` — MusicXML counts in arbitrary `<divisions>` per quarter; we carry
-      `NoteValue` + dots + tuplet. Exact `Fraction` arithmetic throughout, matching the rest of
-      the codebase. Anything that will not land on a representable `Duration` is a reportable
-      failure, not a rounding. **This corpus is kind here:** divisions is 24 throughout and never
-      changes, and 24 = 2³·3 divides evenly for every value present (32nd = 3, triplet-eighth = 4,
-      sixteenth = 6). Do not let that lull the implementation into assuming a constant — other
-      scores change divisions mid-part — but it does mean rounding bugs cannot hide behind this
-      piece.
+- [x] **Package skeleton** — `packages/import`, depending on domain plus exactly one runtime
+      dependency, **`@rgrove/parse-xml` 4.2.2** (ISC, zero transitive deps). Same build/test/export
+      scheme as playback and engraving, no barrels. `@types/node` is a _dev_ dependency and is
+      wired into `tsconfig.test.json` only, deliberately not `tsconfig.json`, so `src` cannot reach
+      for a Node API — the importer stays environment-agnostic like the other pure packages, and
+      reading a file from disk stays the caller's job.
+- [x] **`XmlReading`** — parse to a validated node tree, plus the traversal vocabulary every later
+      reader needs (`elements`, `childNamed`, `childrenNamed`, `textOf`, `attribute`) and the
+      element counters the accounting identity needs (`countElements`, `totalElements`). Rejects
+      only what cannot be read: malformed XML, a rootless document, and `score-timewise` — refused
+      outright rather than half-supported, since a timewise file is a different traversal.
+      **One deviation from the plan as written:** a missing DOCTYPE is _not_ an error — MusicXML
+      3.1 and later are commonly XSD-validated and shipped without one, so requiring it would
+      reject valid files, and the root element plus its `version` attribute are the reliable
+      identification. Verified against the real corpus by 20 tests: the 4 MB file parses offline
+      despite declaring a DOCTYPE pointing at `musicxml.org`, all four parts and 531 measures per
+      part are found, document order survives around `<backup>`, and the element counts match the
+      census exactly (113,657, the census's 113,658 less the root).
+- [x] **`Reporting`** — the warning channel. `Result` carries reasons a file cannot be read at
+      all; most of what an importer must say is neither that nor silence, so readers take a `Warn`
+      callback. A plain callback rather than a wrapper type keeps every reader's signature
+      `Result<T>`.
+- [x] **`AttributeReading`** — `<attributes>` children into domain values (divisions, key, time,
+      clef), so reconciliation can compare _domain_ values and whitespace cannot masquerade as
+      disagreement. Two corpus findings shaped it: the file uses `symbol="common"`/`"cut"`, and it
+      declares **no `<mode>` anywhere** — so Major is assumed and reported. That assumption is
+      lossless downstream, since a signature's printed accidentals and implied pitches depend only
+      on the fifths count; C minor and E-flat major engrave and sound identically, and only a
+      spelled-out key name would show the difference.
+- [x] **`PartwiseToTimewise`** — the grid and score-wide reconciliation, reading **no notes**: it
+      hands each measure's children on per part, in document order, so the alignment logic is
+      testable before a pitch is parsed and no note bug can masquerade as an alignment bug. The
+      plan called this "per-part duplication", which was half the story — measured, score-wide data
+      splits into _duplicated on every part_ (key, time, divisions, repeats: identical indices and
+      values) and _written on one part only_ (voltas and the `<sound>` Fine/da capo, on Violin I
+      alone). Reading "from part 1" would work here by luck while dropping the viola's two
+      `<words>`; demanding agreement fails on voltas. So the rule is **union with conflict
+      detection** — absent everywhere is absent, agreement wins, and a genuine disagreement is
+      reported with the parts named and resolved to the first in score order. Divisions is
+      deliberately excluded: it never reaches a `Score`, parts may legitimately differ, so it is
+      per-part walking state. Refuses only what cannot be aligned (differing measure counts, no
+      parts, an empty part); everything else warns. 47 tests, including the whole corpus: 531
+      aligned measures, key and time reconciled to the census's indices, **zero disagreements**,
+      the cello's tenor clef and its one mid-measure change reported, and a whole-warning-set
+      assertion so anything new surfaces rather than joining a pile.
+- [x] **`DivisionsToDuration`** — MusicXML states a note's length twice, and the two are different
+      kinds of fact: `<type>`/`<dot>`/`<time-modification>` are the **written** form our `Duration`
+      models, while `<duration>` is the **sounded** length in divisions that advances position and
+      that `<backup>`/`<forward>` speak in. So the written form drives and the sounded value
+      **checks** it — converting a parsed `Duration` back into divisions must reproduce
+      `<duration>` exactly, in `Fraction` arithmetic that never rounds a tuplet into agreement.
+      A mismatch means either the file contradicts itself or we misread it; both are worth hearing.
+      The census missed that **160 notes carry no `<type>` at all** — every one a whole-measure
+      rest, stating only how long it lasts — so the module also provides the inverse, searching the
+      representable written values for one of exactly that length and reporting a failure rather
+      than rounding when none fits. Verified by reading **all 10,593 notes of the corpus: zero
+      failures and zero warnings**, with the 1,254 tuplets (1,224 triplets, 30 sextuplets), 547
+      dotted notes, and 160 recovered whole-measure rests all matching the census.
 - [ ] `MeasureSlicing` — import a measure range, not just a whole file. Required from day one,
       because the smoke test is movement II's theme inside a 531-measure score. Note this is a
       **development affordance, not the shipping shape**: the deliverable is one combined `Score`
@@ -371,11 +409,41 @@ Ordered for implementation. Smoke test end-to-end first, breadth second, polish 
       **`NavigationMark.Capo` at each movement start**, without which the Menuetto's da capo
       rewinds to the opening of movement I. Capo marks are synthesised — the source never writes
       one, because in MusicXML the D.C. is implicitly movement-relative.
-- [ ] `PitchReading` — `<pitch>`/`<alter>`/`<octave>` → domain `Pitch`; `<rest>` → `Rest`;
-      simultaneous notes with `<chord/>` folded into `Chord`.
-- [ ] `NotationReading` — ties, slurs, articulations, fermatas, grace notes, tuplets, dynamics,
-      wedges, directions. Every element it meets and cannot map goes to the report rather than
-      being silently dropped — **silent dropping is the one thing this importer must never do.**
+- [x] **`PitchReading`** — `<pitch>` into domain `Pitch`, plus the rest/chord/grace predicates and
+      the chord grouping (`<chord/>` means "sounds with the note before", so grouping is purely a
+      matter of document order). The subtlety is that **`<alter>` and `<accidental>` say different
+      things** — the sounding alteration versus what is printed — and the corpus holds all four
+      combinations: 6,968 notes with neither, 1,353 altered but unprinted (an F♯ in G major, where
+      the key supplies it), 663 altered and printed, and **313 printed with no alteration at all**,
+      every one a natural cancelling the key. That last group is why `<alter>` alone is not enough:
+      a B in F major with no `<alter>` is B-natural, but omitting the accidental means "follow the
+      key", which would sound B♭. So a non-zero `<alter>` gives the accidental, an unaltered note
+      takes `Natural` only when one is printed, and otherwise the key decides. A redundant
+      accidental is harmless because both pipelines treat an explicit one as an _override_ rather
+      than an addition (`Semitone.effective` and `Accidentals.resolve` agree on this) — pinned by a
+      test that an F♯ in G major sounds identically spelled either way. Microtones and unpitched
+      notation are refused by name rather than rounded or mistaken for a missing pitch. Verified
+      across the corpus: every sounded pitch read with no failures, no sounding/printed
+      disagreements, 2,329 explicit accidentals (2,016 alterations plus the 313 naturals), 45 grace
+      notes, and the three rests whose printed position we cannot honor reported.
+- [x] **`NotationReading`** — a note's tie and the `<notations>` the domain models (articulations,
+      slurs, fermatas), plus a grace `<note>` into the `GraceNote` its principal carries.
+      `<tuplet>` brackets are read as **redundant rather than unsupported**: `<time-modification>`
+      already gave `DivisionsToDuration` the ratio and engraving derives the bracket, so reading
+      both would give the tuplet two sources of truth. Ornaments are genuinely unsupported and
+      reported by name, turning the 52 trills and 13 turns into a measured backlog item.
+      **Two real bugs surfaced here**, both found by corpus counts refusing to match the census and
+      both of the kind this project forbids — silent loss. First, a note may carry _several_
+      `<notations>` blocks, additively: 155 notes here have two, with 25 staccatos living only in
+      the second, which reading just the first dropped without a word. Second, 33 of the 45 grace
+      notes are slurred to their principal and `GraceNote` has nowhere to put a slur — engraving
+      could not draw one either — so the loss is real, and is now reported rather than silent.
+      Corpus: 350 tie roles as 152 Begin, 152 End and **23 mid-chain `Both`** (ties spanning three
+      or more notes), 1,040 articulations, 43 fermatas, 45 grace notes split 25 slashed / 20 not,
+      and exactly three kinds of warning.
+- [ ] `DirectionReading` — `<direction>`: dynamics, wedges, and the words that carry tempo and
+      section titles. Measure-level rather than note-level, so deliberately not folded into
+      `NotationReading`.
 - [ ] `StructureReading` — barlines, repeats, endings/voltas, segno/coda/D.C./D.S., so
       `NavigationUnfolding` gets real navigation to unfold.
 - [ ] `ImportReport` — `{ score, consumed: Histogram, unsupported: Histogram, warnings }`. A
@@ -433,12 +501,20 @@ blockers — they came out of the census, not the original prediction.
       has 140 slurs, every one `number="1"`, zero overlap, so `SlurRole`'s Begin/End is fully
       sufficient there. A real gap that will mis-engrave 8 places in 531 measures — not a blocker.
       Do it when those 8 places matter, not before.
-- [ ] **Ornaments in the domain, not derived** (review item 4) — `ornaments?` on `Notations`.
-      The census narrows the needed set to **trill and turn**; add inverted turn and the mordents
-      only if a later piece asks. A trill cannot be inferred from pitches, so deriving it was
-      never an option, and both pipelines interpret it differently (engraving prints glyph + wavy
-      extension; playback realizes the alternation). Follows the fermata precedent `Notations.ts`
-      already sets.
+- [x] **Ornaments in the domain** (review item 4) — `Ornament` (Trill, Turn) with
+      `ornaments?: NonEmptyArray<Ornament>` on `Notations`. Modeled rather than derived, since
+      nothing in a sequence of pitches implies an ornament and the two pipelines read one
+      differently: engraving prints a sign, playback realizes the figure it stands for — the same
+      reason the fermata is modeled apart from `Articulation`. Deliberately narrow: mordents and
+      the inverted turn are equally standard but wait until a piece asks, and adding one is a
+      member plus a SMuFL glyph (`ornamentMordent`, `ornamentTurnInverted` both exist). Arpeggios
+      and tremolos stay out, as review item 4 argued. Engraving draws them above the note through
+      the whole stack — Bravura glyphs, layout tree, `NoteView`/`ChordView` — and the importer now
+      keeps all 65 (52 trills, 13 turns) instead of reporting them as losses. **Marks above an
+      element now stack by their own bounding boxes rather than a fixed step**: the trill glyph is
+      1.56 staff spaces tall against the fermata's 1.32, so any uniform step shorter than the
+      tallest glyph overlaps — which the old 1.2 did, found by looking at a rendered fixture rather
+      than by a test.
 - [ ] **Movement structure — ✅ RESOLVED (trap 1), with one correction.** I had this wrong: the
       navigation is **not** prose. `Fine` and the Menuetto's da capo are structurally encoded as
       `<sound fine="yes">` (idx 294) and `<sound dacapo="yes">` (idx 340), with the `<words>` at

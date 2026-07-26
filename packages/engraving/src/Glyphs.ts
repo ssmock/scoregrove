@@ -1,5 +1,5 @@
 import { Accidental } from '@scoregrove/domain/Pitch';
-import { Articulation } from '@scoregrove/domain/Notations';
+import { Articulation, type Ornament } from '@scoregrove/domain/Notations';
 import type { DynamicMark } from '@scoregrove/domain/Dynamic';
 import type { NavigationMark } from '@scoregrove/domain/Navigation';
 import { NoteValue } from '@scoregrove/domain/Duration';
@@ -83,6 +83,11 @@ const articulationGlyphs: Record<Articulation, { above: GlyphName; below: GlyphN
   Marcato: { above: 'articMarcatoAbove', below: 'articMarcatoBelow' },
 };
 
+const ornamentGlyphs: Record<Ornament, GlyphName> = {
+  Trill: 'ornamentTrill',
+  Turn: 'ornamentTurn',
+};
+
 const navigationGlyphs: Partial<Record<NavigationMark, GlyphName>> = {
   Segno: 'segno',
   Coda: 'coda',
@@ -140,6 +145,11 @@ export const Glyphs = {
 
   forArticulation(articulation: Articulation, placement: 'above' | 'below'): GlyphName {
     return articulationGlyphs[articulation][placement];
+  },
+
+  /** The sign for an ornament; ornaments always print above the note */
+  forOrnament(ornament: Ornament): GlyphName {
+    return ornamentGlyphs[ornament];
   },
 
   forFermata(placement: 'above' | 'below'): GlyphName {

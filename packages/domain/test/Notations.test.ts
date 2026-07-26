@@ -1,7 +1,15 @@
 import { describe, expect, it } from 'vitest';
 import { NoteValue } from '../src/Duration';
 import { NonEmptyString } from '../src/NonEmptyString';
-import { Articulation, GraceNote, GraceStyle, Lyric, SlurRole, Syllabic } from '../src/Notations';
+import {
+  Articulation,
+  GraceNote,
+  GraceStyle,
+  Lyric,
+  Ornament,
+  SlurRole,
+  Syllabic,
+} from '../src/Notations';
 import { Octave, Pitch, PitchClass, PitchLetter } from '../src/Pitch';
 import { expectVocabulary } from './helpers';
 
@@ -10,6 +18,12 @@ const d5 = Pitch.of(PitchClass.of(PitchLetter.D), Octave.of(5));
 describe('Articulation', () => {
   it('covers the attack and length marks', () => {
     expectVocabulary(Articulation, ['Staccato', 'Staccatissimo', 'Tenuto', 'Accent', 'Marcato']);
+  });
+});
+
+describe('Ornament', () => {
+  it('covers the ornaments the domain models', () => {
+    expectVocabulary(Ornament, ['Trill', 'Turn']);
   });
 });
 
@@ -44,6 +58,18 @@ describe('GraceNote', () => {
 describe('Syllabic', () => {
   it('covers hyphenation positions', () => {
     expectVocabulary(Syllabic, ['Single', 'Begin', 'Middle', 'End']);
+  });
+});
+
+describe('GraceNote.slurred', () => {
+  it('carries a slur to its principal as a flag', () => {
+    // One possible shape — grace to principal — so both ends are implied and
+    // there is nothing to number or pair.
+    expect(GraceNote.of(d5, GraceStyle.Acciaccatura, NoteValue.Eighth, true).slurred).toBe(true);
+  });
+
+  it('omits the flag when the grace carries no slur', () => {
+    expect(GraceNote.of(d5, GraceStyle.Appoggiatura).slurred).toBeUndefined();
   });
 });
 

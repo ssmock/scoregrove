@@ -15,3 +15,7 @@ So: representable today only by abusing pitched notes on a normal staff. If drum
 Just a starting bar; wrap text to the end of line or the start of the next remark.
 
 ## Update readme
+
+## Mid-measusure staff change
+
+A clef change goes where the register changes, and is routine in cello, bassoon, and trombone writing, and in keyboard music when a hand crosses.

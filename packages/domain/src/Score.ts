@@ -9,6 +9,7 @@ import type { NonEmptyString } from './NonEmptyString';
 import { SlurRole } from './Notations';
 import { Pitch } from './Pitch';
 import { Result } from './Result';
+import { Part, type StaffGroup } from './Part';
 import type { Staff } from './Staff';
 import type { Tempo } from './Tempo';
 import type { Swing, TimeSignature } from './TimeSignature';
@@ -28,6 +29,14 @@ export type Score = {
   title?: NonEmptyString;
   composer?: NonEmptyString;
   staves: NonEmptyArray<Staff>;
+  /**
+   * Who plays, layered over the staves rather than replacing them: parts
+   * partition `staves` in score order. Absent for a score that has never been
+   * told (every hand-authored fixture), which is why it is optional.
+   */
+  parts?: NonEmptyArray<Part>;
+  /** Brackets and braces joining runs of staves */
+  groups?: readonly StaffGroup[];
   key: KeySignature;
   time: TimeSignature;
   tempo?: Tempo;
@@ -61,6 +70,40 @@ const checkStaffAlignment = (score: Score): string[] => {
         `Measure ${i + 1} has content for ${measure.contents.length} of the ` +
           `${staffCount} staves the score defines`,
       );
+    }
+  });
+
+  return messages;
+};
+
+/**
+ * Parts partition the staves in score order, and a group's range must land
+ * inside them. Both are layers over `staves`, so both are checked against its
+ * length rather than against each other.
+ */
+const checkPartsAndGroups = (score: Score): string[] => {
+  const messages: string[] = [];
+  const staffCount = score.staves.length;
+
+  if (score.parts) {
+    const covered = score.parts.reduce((sum, part) => sum + Part.staffCount(part), 0);
+
+    if (covered !== staffCount) {
+      messages.push(
+        `The ${score.parts.length} part(s) cover ${covered} staves, ` +
+          `but the score defines ${staffCount}`,
+      );
+    }
+  }
+
+  score.groups?.forEach((group, i) => {
+    if (group.from < 0 || group.to >= staffCount) {
+      messages.push(
+        `Staff group ${i + 1} spans staves ${group.from + 1}–${group.to + 1}, ` +
+          `outside the ${staffCount} the score defines`,
+      );
+    } else if (group.to < group.from) {
+      messages.push(`Staff group ${i + 1} ends before it starts`);
     }
   });
 
@@ -387,6 +430,7 @@ export const Score = {
   check(score: Score): Result<void> {
     const messages: string[] = [
       ...checkStaffAlignment(score),
+      ...checkPartsAndGroups(score),
       ...checkNavigation(score),
       ...checkFullness(score),
       ...checkRepeats(score),

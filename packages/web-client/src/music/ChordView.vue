@@ -72,6 +72,13 @@ const isPlaying = computed(() => playing.value.has(addressKey(props.chord.addres
       :y="mark.y"
     />
     <GlyphView
+      v-for="(mark, index) in props.chord.ornaments ?? []"
+      :key="`ornament-${index}`"
+      :glyph="mark.glyph"
+      :x="mark.x"
+      :y="mark.y"
+    />
+    <GlyphView
       v-if="props.chord.fermata"
       :glyph="props.chord.fermata.glyph"
       :x="props.chord.fermata.x"

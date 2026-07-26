@@ -10,6 +10,7 @@ import { NonEmptyArray } from '../src/NonEmptyArray';
 import { SlurRole } from '../src/Notations';
 import { Octave, Pitch, PitchClass, PitchLetter } from '../src/Pitch';
 import { PositiveInteger } from '../src/PositiveInteger';
+import { Part, StaffGroup, StaffGroupSymbol } from '../src/Part';
 import { Score } from '../src/Score';
 import { Staff } from '../src/Staff';
 import { BeatUnit, Swing, TimeSignature } from '../src/TimeSignature';
@@ -541,5 +542,53 @@ describe('Score.check: aggregation', () => {
     expect(error.messages).toContain(
       'A dal segno jump requires a Segno mark somewhere in the score',
     );
+  });
+});
+
+describe('Score.check parts and groups', () => {
+  const twoStaves = NonEmptyArray.of([Staff.of(Clef.Treble), Staff.of(Clef.Bass)]);
+
+  const scoreWith = (extras: Partial<Score>) =>
+    score(NonEmptyArray.of([measure(), measure()]), { staves: twoStaves, ...extras });
+
+  it('accepts parts that cover the staves exactly', () => {
+    expectOk(Score.check(scoreWith({ parts: NonEmptyArray.of([Part.of(), Part.of()]) })));
+  });
+
+  it('accepts one part spanning several staves, as a keyboard does', () => {
+    // The reason parts and staves are separate concepts at all.
+    expectOk(
+      Score.check(
+        scoreWith({ parts: NonEmptyArray.of([Part.of({ staves: PositiveInteger.of(2) })]) }),
+      ),
+    );
+  });
+
+  it('rejects parts that do not cover the staves', () => {
+    const error = expectInvalid(Score.check(scoreWith({ parts: NonEmptyArray.of([Part.of()]) })));
+
+    expect(error.messages.join(' ')).toContain('cover 1 staves');
+  });
+
+  it('accepts a group spanning the staves', () => {
+    expectOk(
+      Score.check(scoreWith({ groups: [StaffGroup.of(StaffGroupSymbol.Bracket, 0, 1, true)] })),
+    );
+  });
+
+  it('rejects a group reaching past the staves it has', () => {
+    const error = expectInvalid(
+      Score.check(scoreWith({ groups: [StaffGroup.of(StaffGroupSymbol.Bracket, 0, 5)] })),
+    );
+
+    expect(error.messages.join(' ')).toContain('outside the 2');
+  });
+
+  it('rejects a group that ends before it starts', () => {
+    const error = expectInvalid(
+      Score.check(scoreWith({ groups: [StaffGroup.of(StaffGroupSymbol.Bracket, 1, 0)] })),
+    );
+
+    expect(error.messages.join(' ')).toContain('ends before it starts');
   });
 });

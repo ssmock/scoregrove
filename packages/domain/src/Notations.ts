@@ -67,11 +67,27 @@ export type GraceNote = {
   pitch: Pitch;
   style: GraceStyle;
   noteValue: NoteValue;
+  /**
+   * Whether a slur joins this grace to the note it decorates — the near-
+   * universal marking for one.
+   *
+   * A flag rather than a `SlurRole` because a grace slur has only one possible
+   * shape: it runs from the grace to its principal, so both endpoints are
+   * implied and there is nothing to number or pair. Giving it a role would put
+   * a second slur on the principal, which carries only one, and would need
+   * numbering to tell it from the phrase slur it usually sits inside.
+   */
+  slurred?: boolean;
 };
 
 export const GraceNote = {
-  of(pitch: Pitch, style: GraceStyle, noteValue: NoteValue = NoteValue.Eighth): GraceNote {
-    return { pitch, style, noteValue };
+  of(
+    pitch: Pitch,
+    style: GraceStyle,
+    noteValue: NoteValue = NoteValue.Eighth,
+    slurred = false,
+  ): GraceNote {
+    return { pitch, style, noteValue, ...(slurred ? { slurred } : {}) };
   },
 };
 
@@ -108,6 +124,39 @@ export const Lyric = {
   },
 };
 
+const ornamentMembers = {
+  Trill: 'Trill',
+  Turn: 'Turn',
+} as const;
+
+/**
+ * A melodic ornament printed above a note: the trill (a rapid alternation with
+ * the note above) and the turn (a figure around the note).
+ *
+ * Modeled here rather than derived, because nothing in a sequence of pitches
+ * implies an ornament — and the two pipelines read one differently: engraving
+ * prints a sign, playback realizes the figure it stands for. That is the same
+ * reason the fermata is modeled apart from `Articulation`, which shapes an
+ * attack rather than standing for notes that are not written.
+ *
+ * Deliberately narrow. Mordents and the inverted turn are equally standard, but
+ * this vocabulary follows what real music has actually asked of us so far;
+ * adding one is a member plus a SMuFL glyph, and the glyphs exist
+ * (`ornamentMordent`, `ornamentTurnInverted`).
+ *
+ * Arpeggios and tremolos are **not** ornaments here even though they are often
+ * filed alongside: an arpeggio is a property of a chord's attack, and a tremolo
+ * carries duration semantics and can span two notes. Flattening either into
+ * this list would repeat the mistake of folding the fermata into
+ * `Articulation`.
+ */
+export type Ornament = (typeof ornamentMembers)[keyof typeof ornamentMembers];
+
+export const Ornament = {
+  ...ornamentMembers,
+  ...vocabulary<Ornament>(ornamentMembers),
+};
+
 /**
  * The optional attachments shared by sounded elements (notes and chords).
  * Ties are not included here: a note carries its own tie, and a chord ties
@@ -115,6 +164,7 @@ export const Lyric = {
  */
 export type Notations = {
   articulations?: NonEmptyArray<Articulation>;
+  ornaments?: NonEmptyArray<Ornament>;
   slur?: SlurRole;
   fermata?: boolean;
   graces?: NonEmptyArray<GraceNote>;

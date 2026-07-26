@@ -21,6 +21,7 @@ import {
   GraceNote,
   GraceStyle,
   Lyric,
+  Ornament,
   SlurRole,
   Syllabic,
 } from '@scoregrove/domain/Notations';
@@ -155,6 +156,7 @@ export const Fixtures = {
             }),
             Note.of(pitch(PitchLetter.G, 4), duration(NoteValue.Quarter), {
               fermata: true,
+              ornaments: NonEmptyArray.of([Ornament.Trill]),
               ...sing('on.'),
             }),
           ],

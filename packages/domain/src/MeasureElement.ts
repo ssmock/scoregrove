@@ -26,6 +26,28 @@ export const TieRole = {
   ...vocabulary<TieRole>(tieMembers),
 };
 
+const noteheadMembers = {
+  Normal: 'Normal',
+  None: 'None',
+} as const;
+
+/**
+ * How a notehead is drawn. `None` is an invisible notehead — a real device,
+ * used to hold a duration without printing a note (spacing a voice, or writing
+ * a tie into a bar that shows nothing).
+ *
+ * Deliberately narrow, following the ornament precedent: the shaped heads (X,
+ * diamond, slash) belong with the unpitched and percussion design that
+ * `TODO-more.md` calls for, and inventing half of that here would pre-empt it.
+ * An absent style means Normal.
+ */
+export type NoteheadStyle = (typeof noteheadMembers)[keyof typeof noteheadMembers];
+
+export const NoteheadStyle = {
+  ...noteheadMembers,
+  ...vocabulary<NoteheadStyle>(noteheadMembers),
+};
+
 /**
  * A single sounded pitch with a written duration, its own optional tie, and
  * any shared notations (articulations, slur, fermata, graces, lyrics).
@@ -35,6 +57,8 @@ export type Note = {
   pitch: Pitch;
   duration: Duration;
   tie?: TieRole;
+  /** How the head is drawn; absent means Normal */
+  notehead?: NoteheadStyle;
 } & Notations;
 
 export const Note = {
@@ -55,6 +79,16 @@ export type Rest = {
   kind: 'rest';
   duration: Duration;
   fermata?: boolean;
+  /**
+   * Where the rest sits on the staff, when the writer pinned it — expressed as
+   * the pitch whose staff position it occupies, which is how the printed page
+   * and MusicXML both think of it.
+   *
+   * Absent means the standard row for the value, which is the usual case. It is
+   * set to clear another voice: a rest that would collide with the notes below
+   * it gets lifted, and that choice is the writer's rather than the engraver's.
+   */
+  position?: Pitch;
 };
 
 export const Rest = {
@@ -74,6 +108,8 @@ export const Rest = {
 export type ChordTone = {
   pitch: Pitch;
   tie?: TieRole;
+  /** How this tone's head is drawn; absent means Normal */
+  notehead?: NoteheadStyle;
 };
 
 export const ChordTone = {

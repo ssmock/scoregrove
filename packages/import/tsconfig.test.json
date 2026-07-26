@@ -1,0 +1,18 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "module": "ESNext",
+    "moduleResolution": "Bundler",
+    "lib": ["ES2022"],
+    // Tests only — `tsconfig.json` deliberately omits these so `src` cannot
+    // reach for a Node API. The importer must stay environment-agnostic like
+    // domain, engraving, and playback; reading a file from disk is the
+    // caller's job, and here that caller is the corpus test.
+    "types": ["node"],
+    "noEmit": true,
+    "declaration": false,
+    "declarationMap": false,
+    "sourceMap": false
+  },
+  "include": ["src", "test"]
+}

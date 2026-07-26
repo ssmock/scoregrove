@@ -444,6 +444,16 @@ export const glyphs = {
     bBoxNE: [0.94, 0],
     bBoxSW: [-0.004, -1.016],
   },
+  ornamentTrill: {
+    codepoint: '\u{E566}',
+    bBoxNE: [2.084, 1.56],
+    bBoxSW: [0, -0.04],
+  },
+  ornamentTurn: {
+    codepoint: '\u{E567}',
+    bBoxNE: [1.84, 0.872],
+    bBoxSW: [0, 0],
+  },
   fermataAbove: {
     codepoint: '\u{E4C0}',
     bBoxNE: [2.42, 1.316],

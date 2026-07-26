@@ -71,6 +71,8 @@ export type LaidOutNote = {
   flag?: LaidOutGlyph;
   /** Attack marks stacked on the side opposite the stem */
   articulations?: readonly LaidOutGlyph[];
+  /** Ornament signs, always above the element (see `Glyphs.forOrnament`) */
+  ornaments?: readonly LaidOutGlyph[];
   fermata?: LaidOutGlyph;
   graces?: readonly LaidOutGrace[];
   ledgers: readonly StaffPosition[];
@@ -125,6 +127,8 @@ export type LaidOutChord = {
   flag?: LaidOutGlyph;
   /** Attack marks stacked beyond the extreme tone opposite the stem */
   articulations?: readonly LaidOutGlyph[];
+  /** Ornament signs, always above the element (see `Glyphs.forOrnament`) */
+  ornaments?: readonly LaidOutGlyph[];
   fermata?: LaidOutGlyph;
   graces?: readonly LaidOutGrace[];
   ledgers: readonly StaffPosition[];
