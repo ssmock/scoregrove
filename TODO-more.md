@@ -19,3 +19,7 @@ Just a starting bar; wrap text to the end of line or the start of the next remar
 ## Mid-measusure staff change
 
 A clef change goes where the register changes, and is routine in cello, bassoon, and trombone writing, and in keyboard music when a hand crosses.
+
+# Engraving Gaps
+
+Engraving doesn't yet draw the bracket, invisible noteheads, or pinned rest rows.

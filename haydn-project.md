@@ -335,6 +335,12 @@ Ordered for implementation. Smoke test end-to-end first, breadth second, polish 
       becoming the thing that is wrong, leaving us debugging the fixture instead of the importer.
       Everything else is covered by the estimators in section B, which compare against the source
       file directly and scale to all 531 measures.
+      **Resequenced:** the build order said no importer code until this existed, and seven reader
+      modules have since landed without it. Rather than book that as debt, it now falls immediately
+      after `VoiceBuilding` — `<backup>`/`<forward>` cursor handling is exactly the semantics an
+      independent transcription can falsify and the source-derived estimators cannot, since those
+      compare the importer against the same file it read. The fixture is worth more against the
+      builder than it would have been against the readers.
 
 ### Phase 1 — `packages/import`
 
@@ -396,19 +402,6 @@ Ordered for implementation. Smoke test end-to-end first, breadth second, polish 
       than rounding when none fits. Verified by reading **all 10,593 notes of the corpus: zero
       failures and zero warnings**, with the 1,254 tuplets (1,224 triplets, 30 sextuplets), 547
       dotted notes, and 160 recovered whole-measure rests all matching the census.
-- [ ] `MeasureSlicing` — import a measure range, not just a whole file. Required from day one,
-      because the smoke test is movement II's theme inside a 531-measure score. Note this is a
-      **development affordance, not the shipping shape**: the deliverable is one combined `Score`
-      (see below), and slicing exists so the smoke test can be 21 bars instead of 531.
-- [ ] `SectionAndCapoSynthesis` — **one combined `Score` for the whole work**, with movements
-      carried by `Measure.newSection` rather than by splitting into four `Score`s. Consequences the
-      importer owns, none of which the source states outright:
-      a section (title + `SectionBreak.Page`) at each movement start, taken from the `<words>`
-      title and the source's own `<print new-page>`; a section (`SectionBreak.System`) at each
-      `Var. I`–`Var. IV` and the `Trio`, matching their `<print new-system>`; and a
-      **`NavigationMark.Capo` at each movement start**, without which the Menuetto's da capo
-      rewinds to the opening of movement I. Capo marks are synthesised — the source never writes
-      one, because in MusicXML the D.C. is implicitly movement-relative.
 - [x] **`PitchReading`** — `<pitch>` into domain `Pitch`, plus the rest/chord/grace predicates and
       the chord grouping (`<chord/>` means "sounds with the note before", so grouping is purely a
       matter of document order). The subtlety is that **`<alter>` and `<accidental>` say different
@@ -441,21 +434,63 @@ Ordered for implementation. Smoke test end-to-end first, breadth second, polish 
       Corpus: 350 tie roles as 152 Begin, 152 End and **23 mid-chain `Both`** (ties spanning three
       or more notes), 1,040 articulations, 43 fermatas, 45 grace notes split 25 slashed / 20 not,
       and exactly three kinds of warning.
-- [ ] `DirectionReading` — `<direction>`: dynamics, wedges, and the words that carry tempo and
-      section titles. Measure-level rather than note-level, so deliberately not folded into
-      `NotationReading`.
+- [x] **`Coverage`** — the static manifest behind "nothing drops in silence", and not in this plan
+      as first written. Reporting unsupported elements cannot enforce that rule on its own: an
+      element no reader ever looks at raises no warning precisely _because_ nobody looked, so the
+      failure is invisible by construction. Every element name a MusicXML file can contain is
+      therefore accounted for in exactly one of four lists — **consumed**, **pending** (a planned
+      module will read it), **ignored** (dropped deliberately, with the reason), **unrepresented**
+      (a real loss the model cannot hold) — and `audit` partitions a file's census against them, so
+      a name on no list is a defect whatever the readers happen to warn. Hand-kept rather than
+      instrumented through every reader: that can drift from the code, but not _silently_, because
+      the corpus test fails the moment the file holds a name no list mentions. `unrepresented` is
+      currently **empty**, since the domain grew somewhere to put everything this corpus contains.
+- [ ] `VoiceBuilding` — **the element builder, and the seam nothing crosses yet.** Every module
+      above reads one thing at a time; this is what assembles them, walking a part's measure
+      children in document order behind a divisions cursor and emitting `StaffContent`: `<note>`
+      through the readers already built, `<chord/>` grouping by document order, `<backup>` and
+      `<forward>` moving the cursor, `<voice>` assigning the line. It is the entire distance
+      between the readers and a `Score`, and therefore between here and the first rendered note.
+      It was absent from this checklist until the code was audited against it — `Coverage.pending`
+      is what named it, listing `backup`, `forward`, and `voice` under a module the plan never had.
+- [ ] `DirectionReading`, **dynamics first** — `<direction>` splits in two, and not where this plan
+      first drew the line. Dynamics are `MeasureElement`s living _inside_ a voice at a position in
+      the stream, so `VoiceBuilding` has to place them and they cannot be deferred past it; the
+      smoke-test theme has 28. Wedges, tempo, and the `<words>` carrying section titles genuinely
+      are measure-level, and follow later alongside `StructureReading`.
+- [ ] `ScoreAssembly` — `TimewiseScore` plus the built measures into a `Score` that passes
+      `Score.check`: staves from the initial clefs, with `parts` and `groups` already reconciled by
+      `PartwiseToTimewise`. Small, but it is what makes the output a domain value rather than a
+      pile of readers.
+- [ ] `MeasureSlicing` — import a measure range, not just a whole file. Required from day one,
+      because the smoke test is movement II's theme inside a 531-measure score. Note this is a
+      **development affordance, not the shipping shape**: the deliverable is one combined `Score`
+      (see below), and slicing exists so the smoke test can be 21 bars instead of 531.
+- [ ] CLI entry — `pnpm --filter @scoregrove/import run <file>` writing score JSON plus the report.
+      Score JSON must be loadable by `Projects.ts` as-is, and it is the seam the capture harness
+      has been waiting on since Phase 0 — these five items together are the whole of what stands
+      between the corpus file and movement II's theme on screen.
 - [ ] `StructureReading` — barlines, repeats, endings/voltas, segno/coda/D.C./D.S., so
-      `NavigationUnfolding` gets real navigation to unfold.
+      `NavigationUnfolding` gets real navigation to unfold. Takes the rest of `DirectionReading`
+      with it: wedges, tempo, and the `<words>` that title sections.
+- [ ] `SectionAndCapoSynthesis` — **one combined `Score` for the whole work**, with movements
+      carried by `Measure.newSection` rather than by splitting into four `Score`s. Consequences the
+      importer owns, none of which the source states outright:
+      a section (title + `SectionBreak.Page`) at each movement start, taken from the `<words>`
+      title and the source's own `<print new-page>`; a section (`SectionBreak.System`) at each
+      `Var. I`–`Var. IV` and the `Trio`, matching their `<print new-system>`; and a
+      **`NavigationMark.Capo` at each movement start**, without which the Menuetto's da capo
+      rewinds to the opening of movement I. Capo marks are synthesised — the source never writes
+      one, because in MusicXML the D.C. is implicitly movement-relative.
 - [ ] `ImportReport` — `{ score, consumed: Histogram, unsupported: Histogram, warnings }`. A
       `Result`, consistent with the rest of the domain. The unsupported histogram ranks all
       subsequent work; the **consumed** histogram exists so `consumed + unsupported` can be checked
       against the file's total element count (section B, tier 1) — the accounting identity that
-      turns "never drop silently" from an intention into something enforced.
+      turns "never drop silently" from an intention into something enforced, and the per-import
+      runtime counterpart to `Coverage`'s static manifest.
 - [ ] `Verification` — the reusable `--verify` mode implementing section B's estimators, so every
       future import gets them for free rather than re-deriving a one-off script per piece.
-- [ ] CLI entry — `pnpm --filter @scoregrove/import run <file>` writing score JSON plus the
-      report. Score JSON must be loadable by `Projects.ts` as-is.
-- [ ] Vitest suite — round-trip the hand-authored theme, plus focused fixtures per reader module.
+- [ ] Vitest suite — round-trip the hand-authored excerpt, plus focused fixtures per reader module.
 
 ### Phase 2 — Domain additions (driven by the report, expected order)
 
@@ -484,15 +519,16 @@ blockers — they came out of the census, not the original prediction.
       has no positional rule at all.
 - [x] **`NavigationMark.Capo`** and **`Measure.newSection`** — the movement-structure work; see the
       trap 1 resolution below.
-- [ ] **`Part`** — identity: full name, short name, and a sound/instrument reference for playback
-      (`<instrument-sound>strings.violin|viola|cello` is present and usable). A part owns one _or
-      more_ staves (quartet: 4 parts × 1 staff; piano: 1 part × 2 staves). Replaces the bare
-      `label?`. Note the corpus has **no `<part-abbreviation>`**, so short names are ours to
-      author — the importer cannot supply them.
-- [ ] **`StaffGroup`** — a bracket/brace over a staff range, with a symbol (bracket / brace /
-      line) and whether barlines run through the group. Nestable, because MusicXML's groups are.
-      For the quartet: one bracket over all four, barlines joined. Affects engraving's
-      `VerticalLayout` and `SystemLayout`.
+- [x] **`Part`** — name, abbreviation, and an instrument-sound reference for playback. Parts
+      partition `Score.staves` in score order via a `staves` count, so `staves` stays the flat list
+      `Measure.contents` indexes against — parts are a layer over it, not a replacement. Optional,
+      so every existing fixture stays valid; `Score.check` validates that parts cover the staves.
+- [x] **`StaffGroup`** — a symbol (bracket / brace / line) over a staff range, with optional joined
+      barlines. A range rather than a tree, because groups nest by containment; `Score.check`
+      validates bounds and ordering. The importer reads `<part-group>` as the stack MusicXML
+      encodes (groups open and close _between_ `<score-part>` entries), and the corpus's bracket
+      comes through as one group over all four staves with barlines joined. **Engraving does not
+      draw it yet** — the information is carried, the rendering is Phase 3.
 - [ ] **Slur numbering** — make overlapping and nested slurs distinguishable; touches `Notations`,
       engraving's `Slurs`, and the importer's `NotationReading` at once. **Downgraded on
       measurement:** section A called this the dominant domain change on the strength of 2,416
@@ -515,7 +551,7 @@ blockers — they came out of the census, not the original prediction.
       1.56 staff spaces tall against the fermata's 1.32, so any uniform step shorter than the
       tallest glyph overlaps — which the old 1.2 did, found by looking at a rendered fixture rather
       than by a test.
-- [ ] **Movement structure — ✅ RESOLVED (trap 1), with one correction.** I had this wrong: the
+- [x] **Movement structure — RESOLVED (trap 1), with one correction.** I had this wrong: the
       navigation is **not** prose. `Fine` and the Menuetto's da capo are structurally encoded as
       `<sound fine="yes">` (idx 294) and `<sound dacapo="yes">` (idx 340), with the `<words>` at
       those measures being duplicates. So the importer reads attributes, not text. Two details:
@@ -542,7 +578,10 @@ review item 4 for when it becomes due.
 - [ ] Staff labels: full names on the first system, abbreviations after. `TextMeasure` exists but
       the staff-label margin is still a fixed 8 spaces and does not consult it — a four-staff
       score with "Violoncello" in the margin will expose that immediately.
-- [ ] Ornament glyphs. Bravura has all of them; they need adding to the extraction list in
+- [x] Ornament glyphs — `ornamentTrill` and `ornamentTurn` extracted and drawn above the note,
+      with marks now stacking by their own bounding boxes rather than a fixed step.
+- [ ] Remaining ornament glyphs (mordents, inverted turn) when a piece asks. Added to the
+      extraction list in
       `generate-bravura.mjs` and a regenerate.
 - [ ] Stub (partial) secondary beams.
 - [ ] Chord beaming.
@@ -636,16 +675,21 @@ calling this piece done.
 
 ## Build order
 
-1. Phase 0 in full. Do not write importer code until the source, the reference, the capture
-   command, and the hand-authored theme all exist.
-2. Importer skeleton through `NotationReading`, aimed only at the 20-bar theme. Success is the
-   imported theme matching the hand-authored one.
-3. First full report on movement II. Read the histogram before deciding anything else.
-4. Staff grouping and part identity — the two structural blockers — regardless of what the
-   histogram says, because the page is wrong without them.
-5. Histogram top-down, re-importing after each fix.
-6. Movement II complete → I → III → IV, taking the same loop each time.
-7. Playback fidelity once the engraving is readable. A wrong score played beautifully is still
+1. ~~Phase 0 in full before any importer code.~~ **Overtaken, deliberately.** The source, the
+   reference, and the capture command exist; the hand-authored excerpt does not, and seven reader
+   modules landed without it. Resequenced to step 3 rather than booked as debt — see Phase 0.
+2. **Get the theme on screen.** `VoiceBuilding` → `DirectionReading` (dynamics) → `ScoreAssembly` →
+   `MeasureSlicing` → CLI, then idx 128–148 through the capture harness. Success is 21 rendered
+   bars to read against the PDF — which is also the first real test of the one risk this document
+   leaves open on purpose, whether the OpenScore encoding is a _good_ transcription.
+3. Hand-author the excerpt and cross-check `VoiceBuilding` against it, independently of MusicXML.
+4. First full report on movement II. Read the histogram before deciding anything else.
+5. Staff grouping and part identity — the two structural blockers. **The domain half is done**
+   (`Part`, `StaffGroup`); what remains is Phase 3's bracket and joined barlines, which come
+   regardless of what the histogram says, because the page is wrong without them.
+6. Histogram top-down, re-importing after each fix.
+7. Movement II complete → I → III → IV, taking the same loop each time.
+8. Playback fidelity once the engraving is readable. A wrong score played beautifully is still
    wrong.
 
 ## Items for review — all resolved
