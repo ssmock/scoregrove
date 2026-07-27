@@ -99,6 +99,9 @@ importers:
       '@scoregrove/engraving':
         specifier: workspace:*
         version: link:../engraving
+      '@scoregrove/playback':
+        specifier: workspace:*
+        version: link:../playback
       '@types/node':
         specifier: ^26.1.1
         version: 26.1.1

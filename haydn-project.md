@@ -851,8 +851,31 @@ calling this piece done.
 - [ ] Ornament realization — at minimum trills; tremolo if the histogram demands it.
 - [ ] Crescendo/diminuendo as true ramps, applied at staff rather than voice scope.
 - [ ] Accel./rit. performed.
-- [ ] Structural verification suite — per-part note counts, total duration, tie folding, no
-      degenerate durations.
+- [x] **Structural verification suite** (`PerformanceChecks`) — seven checks over the compiled
+      quartet's **10,882 events and 18 minutes**: per-part note counts summed over the play order,
+      tie chains folded once, no degenerate or out-of-order events, total duration recomputed from
+      tempo and meter, no written part silent, and every written measure performed. Six pass.
+      **Two things it caught, and the first was mine.** The duration check disagreed by 49 seconds:
+      29 of those were the **22 partial measures**, which last what they hold rather than what
+      their meter allows and are replayed by the repeats; the other 19 were my walk carrying tempo
+      along the _play_ order, so a repeat back into movement I dragged measure 108's metronome mark
+      over bars that are still Allegro. Tempo resolves in **written** order and is then looked up
+      per played measure — a repeat does not change the tempo of the bars it returns to.
+      Independence is real but bounded, and the module says so: the checks recompute against the
+      `Score` and the play order, so they catch `EventFlattening` and `TimeMapping` errors, but
+      they call `NavigationUnfolding` and `TempoResolution` and so cannot catch those being wrong.
+- [ ] **A Fine ends the piece, not the movement — the finale never plays.** The real finding, and
+      the reason the last check fails: `NavigationUnfolding` resolves Fine score-wide, so the
+      Menuetto's `DaCapoAlFine` at measure 340 stops the performance at the Fine in measure 294 and
+      **190 of 531 measures — the entire fourth movement — are never performed.** The score is
+      well-formed, correctly timed, and simply missing a quarter of the work; nothing but a
+      structural check or a listener reaching the end would notice. The plan predicted the shape of
+      this ("Segno, Coda and Fine still resolve to their first occurrence… correct for this piece —
+      **accidentally so**") and was wrong that it was correct here. The fix is not a lookup tweak:
+      "al Fine" means the piece ends, so a multi-movement `Score` needs the jump and its Fine to be
+      **section-relative**, which is the one thing playback deliberately ignores — sections were
+      modelled as presentational and playback was documented as not consulting them. That decision
+      now has a counter-example and should be revisited rather than patched around.
 
 ### Phase 5 — Application
 
