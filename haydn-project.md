@@ -913,12 +913,36 @@ calling this piece done.
 
 ### Phase 5 — Application
 
-- [ ] Load the imported quartet in the app and read it: multi-page scrolling, four-staff systems,
-      print layout.
+- [x] **Load the imported quartet in the app and read it.** The command
+      `pnpm --filter web-client haydn-app <score.json>` serves the built app, seeds the score into `localStorage` under the key
+      `Projects` uses, and opens it **through the project dialog by clicking**, so the path under
+      test is the real one rather than a function call. It captures the top, a few screenfuls of
+      scrolling, and the print stylesheet as both PNG and PDF. Every capture until now went through
+      a Storybook harness story, which exercises the pipeline and `ScoreView` and nothing around
+      them — not the project store, the shell, the scrolling document or print.
+      **It works: all 531 measures, 139 systems, no console errors**, with the title, composer,
+      movement heading, tempo, bracket, joined barlines and part names all correct, and print
+      dropping the chrome and widening the systems.
+      **And it takes 49.8 seconds to open.** That is the scale problem the plan predicted, but not
+      where it predicted it. Line breaking and spacing were the suspects, "plausibly superlinear";
+      measured, **layout is linear and cheap** — 336 ms, 540 ms and 1,046 ms for 133, 266 and 531
+      measures. Parse, import and compile add about 0.8 s more. The other ~48 s is mounting 139
+      systems of SVG in one synchronous pass, so the cost is the DOM, not the engraving.
 - [x] **Per-part mute/solo** — done early, alongside the per-part instruments; see Phase 4. The
       store carries the flags so the UI can show them, but the decision is the ensemble's. **No UI
       control yet** — the actions exist and are tested, the buttons do not.
-- [ ] Storybook stories driven by the imported score, not just the invented fixtures.
+- [x] **Storybook stories driven by the imported score.** `ScoreView` now has `HaydnTheme` and
+      `HaydnThemeNarrow` — movement II's theme at a comfortable width and at one narrow enough that
+      line breaking has to work for it. The score is committed as JSON rather than parsed in the
+      story, because no story should read a 4 MB XML file; a test in `packages/import` rebuilds it
+      from the corpus and fails if the importer stops producing exactly that, so the stories cannot
+      quietly render what the importer used to do. Writing it caught the fixture already stale
+      against the section and tie work.
+- [ ] **Render only what is on screen.** The 49.8 s open above: 139 systems mount at once and block
+      the main thread throughout. Layout is not the problem and does not need optimising — the fix
+      is to stop building DOM for systems nobody is looking at, which also settles whether a
+      re-layout on resize (about 1 s for this work) can be made to feel instant. Until then the app
+      is usable for a movement and not for a whole quartet.
 
 ---
 

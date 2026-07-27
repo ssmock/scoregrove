@@ -12,7 +12,8 @@
     "print:preview": "node scripts/print-preview.mjs",
     "haydn": "node scripts/haydn.mjs",
     "test": "tsc --noEmit -p tsconfig.test.json && vitest run",
-    "test:watch": "vitest"
+    "test:watch": "vitest",
+    "haydn-app": "node scripts/haydn-app.mjs"
   },
   "dependencies": {
     "@scoregrove/domain": "workspace:*",

@@ -37,10 +37,18 @@ Thumbs.db
 
 # Live ngrok tunnel URLs (written by `pnpm tunnels`)
 .tunnels.json
-haydn-capture
+# Capture output directories (the scripts that make them are tracked)
+haydn-capture/
+haydn-app/
+haydn-app-full/
+haydn-chords/
+haydn-stubs/
+haydn-ties/
+haydn-menuetto/
 
-# Imported scores — regenerate with `pnpm --filter @scoregrove/import run import`
-*.score.json
+# Imported scores are build artifacts — regenerate with
+# `pnpm --filter @scoregrove/import run import`. The one committed exception is
+# the theme fixture the stories render, which a test keeps in step.
 packages/import/*.json
 !packages/import/package.json
 !packages/import/tsconfig*.json

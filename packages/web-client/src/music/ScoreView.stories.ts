@@ -3,7 +3,12 @@ import { NewSection, SectionBreak } from '@scoregrove/domain/Measure';
 import { NonEmptyArray } from '@scoregrove/domain/NonEmptyArray';
 import { NonEmptyString } from '@scoregrove/domain/NonEmptyString';
 import { Fixtures } from '@scoregrove/engraving/Fixtures';
+import type { Score } from '@scoregrove/domain/Score';
 import ScoreView from './ScoreView.vue';
+import haydnThemeJson from './fixtures/haydnTheme.score.json';
+
+/** Movement II's theme, imported from the corpus; see the story below */
+const haydnTheme = haydnThemeJson as unknown as Score;
 
 /** The melody fixture with a titled section opening partway through */
 const sectioned = () => {
@@ -76,4 +81,23 @@ export const ResizeDriven: Story = {
  */
 export const Sections: Story = {
   args: { score: sectioned(), width: 120, scale: 12 },
+};
+
+/**
+ * Real music, imported rather than invented. Movement II's theme from the
+ * Haydn quartet — four bracketed staves with joined barlines, part names,
+ * a pickup bar, slurs, dynamics, a turn, fermatas and a double stop, none of
+ * which anyone chose to exercise a feature.
+ *
+ * The fixture is committed score JSON rather than parsed here: a story should
+ * not read a 4 MB XML file, and a test in `packages/import` fails if the
+ * importer stops producing exactly this, so it cannot drift unnoticed.
+ */
+export const HaydnTheme: Story = {
+  args: { score: haydnTheme, width: 110, scale: 10 },
+};
+
+/** The same music at a narrower width, so line breaking has to work for it */
+export const HaydnThemeNarrow: Story = {
+  args: { score: haydnTheme, width: 62, scale: 10 },
 };
