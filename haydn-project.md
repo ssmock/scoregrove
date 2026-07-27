@@ -872,37 +872,30 @@ calling this piece done.
       Independence is real but bounded, and the module says so: the checks recompute against the
       `Score` and the play order, so they catch `EventFlattening` and `TimeMapping` errors, but
       they call `NavigationUnfolding` and `TempoResolution` and so cannot catch those being wrong.
-- [ ] **⇦ NEXT: A Fine ends the piece, not the movement — the finale never plays.** The real finding, and
-      the reason the last check fails: `NavigationUnfolding` resolves Fine score-wide, so the
-      Menuetto's `DaCapoAlFine` at measure 340 stops the performance at the Fine in measure 294 and
-      **190 of 531 measures — the entire fourth movement — are never performed.** The score is
-      well-formed, correctly timed, and simply missing a quarter of the work; nothing but a
-      structural check or a listener reaching the end would notice. The plan predicted the shape of
-      this ("Segno, Coda and Fine still resolve to their first occurrence… correct for this piece —
-      **accidentally so**") and was wrong that it was correct here. The fix is not a lookup tweak:
-      "al Fine" means the piece ends, so a multi-movement `Score` needs the jump and its Fine to be
-      **section-relative**, which is the one thing playback deliberately ignores — sections were
-      modelled as presentational and playback was documented as not consulting them. That decision
-      now has a counter-example and should be revisited rather than patched around.
-      **The proposal: segment the score at `NavigationMark.Capo`, unfold each segment
-      independently, and concatenate.** Capo is already a navigation concept playback reads, the
-      importer already places one at each movement start (0, 128, 237, 341), and its documented
-      meaning — "where a da capo returns to" — is exactly "the start of this navigation segment",
-      so this finishes the job its own doc says it left undone ("Segno, Coda, and Fine are still
-      resolved to their _first_ occurrence"). Fine, Segno and Coda become segment-local for free; a
-      score with no Capo is one segment, i.e. today's behaviour, so nothing regresses; and playback
-      still never reads `newSection`, leaving that decision intact. Contained to
-      `NavigationUnfolding` plus its tests and the corpus check that currently asserts 190 unplayed
-      measures.
-      **What it does not fix, worth knowing before starting.** (1) It relies on the importer's
-      convention that a Capo marks a movement start — a hand-authored score with a mid-movement
-      Capo would segment wrongly, and nothing enforces the convention. (2) A movement boundary
-      carrying only a `newSection` and no Capo still will not segment, because playback continues
-      to ignore sections; the two ways of saying "a movement begins here" stay unrelated. (3) A
-      repeat spanning a segment boundary would be cut at it — impossible in real music, but a new
-      assumption the code would be making silently. (4) A genuinely single-movement piece with one
-      Fine behaves exactly as before, which is correct but means this is untested by anything but
-      multi-movement scores.
+- [x] **A Fine now ends its movement, not the piece — the finale plays.** `Capo` marks divide the
+      score into **navigation sections**, and every jump and landmark resolves inside the one it
+      falls in: a da capo returns to its section's head, a dal segno finds its own Segno, and an al
+      Fine return ends that section with the performance carrying on into the next. A score with no
+      Capo is one section, i.e. exactly the previous behaviour. Capo's doc now states the wider
+      meaning, and says why it is deliberately **not** tied to `Measure.newSection` — a score may
+      divide its navigation without printing a heading, and print one without dividing.
+      **A second bug hid behind the first.** With the finale reachable, measure 412 still never
+      played: its `RepeatClose` has no `RepeatOpen` of its own, and the "repeat from the start"
+      fallback sent it to measure 0 — which also made its volta chain share a pass counter with a
+      repeat 400 measures earlier, so the first ending was gated out by a count left over from
+      movement I. The fallback is now the **section's** head. Events went 10,882 → 13,660 → 14,858
+      across the two fixes.
+      **Two checks, added because the code now assumes them.** `Score.check` rejects a repeat that
+      spans a Capo — a within-section device crossing a boundary it has already left — and an al
+      Fine jump whose Fine is in another section, which passed the score-wide "a Fine exists
+      somewhere" rule while being unreachable. The second reports only when a Fine exists elsewhere,
+      since with none at all the older message already says so.
+      **Caveat (1) was withdrawn rather than checked.** `Navigation.ts` already documents a Capo
+      before a long introduction, so a mid-movement Capo is a sanctioned use, and there is nothing
+      coherent to validate it against — the domain has no "movement", and requiring a Capo to
+      coincide with a `newSection` would drag a presentational field into a navigation invariant.
+      Redefining Capo as "the head of a navigation section" makes the behaviour correct by
+      definition instead.
 
 ### Phase 5 — Application
 

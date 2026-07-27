@@ -182,3 +182,76 @@ describe('NavigationUnfolding.unfold', () => {
     ).toEqual([0, 1, 0, 1, 2, 0, 1, 2]);
   });
 });
+
+describe('NavigationUnfolding.unfold, sections', () => {
+  it('ends an al Fine at its own section and plays on into the next', () => {
+    // The Haydn shape in miniature: a section with a Fine and a da capo, then
+    // another section after it. The al Fine used to stop the whole piece.
+    const played = order([
+      measure({ marks: NonEmptyArray.of([NavigationMark.Capo]) }), // 0
+      measure({ marks: NonEmptyArray.of([NavigationMark.Fine]) }), // 1
+      measure({ jump: NavigationJump.DaCapoAlFine }), // 2
+      measure({ marks: NonEmptyArray.of([NavigationMark.Capo]) }), // 3 — next section
+      measure(), // 4
+    ]);
+
+    expect(played).toEqual([0, 1, 2, 0, 1, 3, 4]);
+  });
+
+  it('sends a da capo to its own section head, not the score start', () => {
+    const played = order([
+      measure(), // 0 — a first section that must not be returned to
+      measure({ marks: NonEmptyArray.of([NavigationMark.Capo]) }), // 1
+      measure({ marks: NonEmptyArray.of([NavigationMark.Fine]) }), // 2
+      measure({ jump: NavigationJump.DaCapoAlFine }), // 3
+    ]);
+
+    expect(played).toEqual([0, 1, 2, 3, 1, 2]);
+  });
+
+  it('finds the Segno in its own section', () => {
+    const played = order([
+      measure({ marks: NonEmptyArray.of([NavigationMark.Segno]) }), // 0 — a decoy
+      measure({ marks: NonEmptyArray.of([NavigationMark.Capo, NavigationMark.Segno]) }), // 1
+      measure(), // 2
+      measure({ jump: NavigationJump.DalSegno }), // 3
+    ]);
+
+    expect(played).toEqual([0, 1, 2, 3, 1, 2, 3]);
+  });
+
+  it('repeats from its section head when a close has no open', () => {
+    // The finale's shape: a repeat with no RepeatOpen of its own. Falling back
+    // to measure 0 sent it into the previous section entirely.
+    const played = order([
+      measure(), // 0
+      measure({ marks: NonEmptyArray.of([NavigationMark.Capo]) }), // 1
+      measure({ closing: ClosingBarline.RepeatClose }), // 2
+    ]);
+
+    expect(played).toEqual([0, 1, 2, 1, 2]);
+  });
+
+  it('keeps each section’s repeat passes to itself', () => {
+    // Measure 412 of the corpus was skipped entirely because its volta chain
+    // shared a pass counter with a repeat 400 measures earlier: the count was
+    // already 2, so the first ending never played.
+    const played = order([
+      measure({ closing: ClosingBarline.RepeatClose }), // 0 — section 1's repeat
+      measure({ marks: NonEmptyArray.of([NavigationMark.Capo]) }), // 1
+      measure({ ending: ending(1), closing: ClosingBarline.RepeatClose }), // 2
+      measure({ ending: ending(2) }), // 3
+    ]);
+
+    expect(played).toEqual([0, 0, 1, 2, 1, 3]);
+  });
+
+  it('leaves a score with no Capo exactly as it was', () => {
+    const played = order([
+      measure({ marks: NonEmptyArray.of([NavigationMark.Fine]) }),
+      measure({ jump: NavigationJump.DaCapoAlFine }),
+    ]);
+
+    expect(played).toEqual([0, 1, 0]);
+  });
+});

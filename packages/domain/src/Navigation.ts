@@ -20,6 +20,22 @@ const markMembers = {
  * single-section piece. Placing one is only necessary when the score's start
  * and the jump's target differ — a movement after the first, or a piece with
  * a long introduction the da capo should skip.
+ *
+ * ## Capo begins a navigation section
+ *
+ * A Capo does not only name a da capo's target: it **divides the score**, and
+ * everything navigational resolves within the division it falls in. A dal
+ * segno finds the Segno in its own section; a repeat with no open of its own
+ * returns to its section's head rather than the score's; and an *al Fine*
+ * return ends **that section**, with the performance carrying on into the one
+ * that follows. The two readings are the same sentence — a da capo returns to
+ * the head of its section — but the wider one is what lets four movements
+ * share a `Score` without the third movement's Fine ending the piece.
+ *
+ * This is deliberately **not** tied to `Measure.newSection`, which is
+ * presentational and which playback ignores. A score may divide its navigation
+ * without printing a heading, and print a heading without dividing its
+ * navigation; the two say different things and are stated separately.
  */
 export type NavigationMark = (typeof markMembers)[keyof typeof markMembers];
 

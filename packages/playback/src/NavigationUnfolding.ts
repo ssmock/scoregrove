@@ -27,13 +27,23 @@ import type { Score } from '@scoregrove/domain/Score';
  *   - On that post-jump traversal, volta groups take their final ending (the
  *     passage that continues onward), skipping earlier ones.
  *
- * A da capo returns to the nearest preceding `Capo` mark, falling back to
- * measure 0 when the score has none. **This does not amount to multi-section
- * support.** Segno, Coda, and Fine are still resolved to their *first*
- * occurrence in the score, so a score holding several sections that each carry
- * their own would mis-resolve all three. Only the da capo target is
- * section-relative, because only it was wrong for a score that legitimately
- * starts somewhere other than its first measure.
+ * ## Sections
+ *
+ * `Capo` marks divide the score into **navigation sections**, and every jump
+ * and landmark resolves inside the one it belongs to. A da capo returns to its
+ * section's head; a dal segno finds the Segno in its own section; and an *al
+ * Fine* return ends **that section** rather than the piece, with the
+ * performance continuing at the section that follows.
+ *
+ * That last point is why this exists. The Haydn quartet is four movements in
+ * one `Score`: the Menuetto's D.C. al Fine used to stop the whole performance
+ * at the Fine in measure 294, leaving **190 measures — the entire finale —
+ * never played**, in a performance that was otherwise well-formed and
+ * correctly timed. Nothing but a structural check or a listener sitting
+ * through eighteen minutes would have noticed.
+ *
+ * A score with no `Capo` is a single section, which is every ordinary piece
+ * and exactly the previous behaviour.
  */
 
 /** One measure to play, tagged with which time through it this is (1 = first sounding, 2 = second, …). */
@@ -56,18 +66,38 @@ const alCodaJumps: ReadonlySet<NavigationJump> = new Set([
   NavigationJump.DalSegnoAlCoda,
 ]);
 
-/** The RepeatOpen a RepeatClose loops back to, or 0 (repeat from the start) when it has none */
-const matchingOpen = (measures: readonly Measure[], closeIndex: number): number => {
-  if (measures[closeIndex].opening === OpeningBarline.RepeatOpen) return closeIndex;
-
-  for (let i = closeIndex - 1; i >= 0; i -= 1) {
-    // A prior repeat's close means this one has no open of its own — it repeats
-    // from the start, not into an already-closed section.
-    if (measures[i].closing === ClosingBarline.RepeatClose) return 0;
-    if (measures[i].opening === OpeningBarline.RepeatOpen) return i;
+/** Where a section begins: the nearest `Capo` at or before `from`, else measure 0 */
+const sectionStartOf = (measures: readonly Measure[], from: number): number => {
+  for (let i = from; i >= 0; i -= 1) {
+    if (measures[i].marks?.includes(NavigationMark.Capo)) return i;
   }
 
   return 0;
+};
+
+/**
+ * The RepeatOpen a RepeatClose loops back to, or its **section's** head when it
+ * has none.
+ *
+ * The section part is not a detail. The Haydn finale's repeat has no open of
+ * its own, and falling back to measure 0 sent it into the first movement — and
+ * worse, made its volta chain share a pass counter with a repeat 400 measures
+ * earlier, so the finale's first ending was gated out by a count left over from
+ * movement I and never played at all.
+ */
+const matchingOpen = (measures: readonly Measure[], closeIndex: number): number => {
+  if (measures[closeIndex].opening === OpeningBarline.RepeatOpen) return closeIndex;
+
+  const head = sectionStartOf(measures, closeIndex);
+
+  for (let i = closeIndex - 1; i >= head; i -= 1) {
+    // A prior repeat's close means this one has no open of its own — it repeats
+    // from the section's head, not into an already-closed passage.
+    if (measures[i].closing === ClosingBarline.RepeatClose) return head;
+    if (measures[i].opening === OpeningBarline.RepeatOpen) return i;
+  }
+
+  return head;
 };
 
 const sameNumbers = (a: readonly number[], b: readonly number[]): boolean =>
@@ -135,25 +165,29 @@ export const NavigationUnfolding = {
     const measures = score.measures;
     const count = measures.length;
 
-    const markIndex = (mark: NavigationMark): number =>
-      measures.findIndex((measure) => measure.marks?.includes(mark));
-
-    const segnoIndex = Math.max(0, markIndex(NavigationMark.Segno));
-    const codaIndex = markIndex(NavigationMark.Coda);
-    const fineIndex = markIndex(NavigationMark.Fine);
-
     /**
-     * Where a da capo at `from` returns to: the nearest preceding Capo mark,
-     * or measure 0 when there is none — "the head" of an ordinary single-
-     * section score. Searching backward rather than taking the first Capo is
-     * what lets several sections each carry their own.
+     * Where a da capo at `from` returns to, and equally where its section
+     * begins: the nearest preceding Capo mark, or measure 0 when there is none
+     * — "the head" of an ordinary single-section score.
      */
-    const capoIndexAt = (from: number): number => {
-      for (let i = from; i >= 0; i -= 1) {
-        if (measures[i].marks?.includes(NavigationMark.Capo)) return i;
+    const sectionStartAt = (from: number): number => sectionStartOf(measures, from);
+
+    /** The last measure of the section containing `from` */
+    const sectionEndAt = (from: number): number => {
+      for (let i = from + 1; i < count; i += 1) {
+        if (measures[i].marks?.includes(NavigationMark.Capo)) return i - 1;
       }
 
-      return 0;
+      return count - 1;
+    };
+
+    /** The first measure carrying `mark` within a section, or -1 */
+    const markIn = (mark: NavigationMark, start: number, end: number): number => {
+      for (let i = start; i <= end; i += 1) {
+        if (measures[i].marks?.includes(mark)) return i;
+      }
+
+      return -1;
     };
     const voltas = voltaInfo(measures);
 
@@ -165,6 +199,12 @@ export const NavigationUnfolding = {
     let suppressRepeats = false;
     let stopAtFine = false;
     let toCodaActive = false;
+    /** The Fine that ends the section a taken al Fine jump belongs to */
+    let fineIndex = -1;
+    /** The Coda the armed al Coda jump seeks, within its own section */
+    let codaIndex = -1;
+    /** Where to carry on once an al Fine return has ended its section */
+    let resumeAt = count;
 
     // A checked score always terminates well within this; the cap only guards
     // against a malformed structure slipping through (like the throw in
@@ -208,8 +248,17 @@ export const NavigationUnfolding = {
       occurrences.set(pos, occurrence);
       output.push({ measureIndex: pos, pass: occurrence });
 
-      // An al Fine return ends the piece at the Fine mark.
-      if (stopAtFine && pos === fineIndex) break;
+      // An al Fine return ends its **section** at the Fine, and the piece
+      // carries on with whatever section follows. Every flag resets: the next
+      // section is a fresh navigation world, and without clearing
+      // `suppressRepeats` its repeats would silently not be taken.
+      if (stopAtFine && pos === fineIndex) {
+        stopAtFine = false;
+        suppressRepeats = false;
+        toCodaActive = false;
+        pos = resumeAt;
+        continue;
+      }
 
       // Repeat loop-back, unless we are on a post-jump traversal.
       if (!suppressRepeats && measure.closing === ClosingBarline.RepeatClose) {
@@ -235,13 +284,26 @@ export const NavigationUnfolding = {
             continue;
           }
         } else if (!jumpsTaken.has(pos)) {
+          const start = sectionStartAt(pos);
+          const end = sectionEndAt(pos);
+
           jumpsTaken.add(pos);
           suppressRepeats = true;
 
-          if (alFineJumps.has(jump)) stopAtFine = true;
-          if (alCodaJumps.has(jump)) toCodaActive = true;
+          if (alFineJumps.has(jump)) {
+            stopAtFine = true;
+            fineIndex = markIn(NavigationMark.Fine, start, end);
+            resumeAt = end + 1;
+          }
 
-          pos = dalSegnoJumps.has(jump) ? segnoIndex : capoIndexAt(pos);
+          if (alCodaJumps.has(jump)) {
+            toCodaActive = true;
+            codaIndex = markIn(NavigationMark.Coda, start, end);
+          }
+
+          const segno = markIn(NavigationMark.Segno, start, end);
+
+          pos = dalSegnoJumps.has(jump) ? (segno >= 0 ? segno : start) : start;
           continue;
         }
       }

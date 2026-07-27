@@ -110,11 +110,39 @@ const checkPartsAndGroups = (score: Score): string[] => {
   return messages;
 };
 
+/**
+ * Where each navigation segment begins: measure 0, and every measure carrying
+ * a `Capo`. A jump, and the landmark it seeks, live within one segment — which
+ * is what lets several movements share a `Score` without a Fine in the third
+ * ending the second.
+ */
+const segmentStarts = (score: Score): number[] => {
+  const starts = score.measures.flatMap((measure, index) =>
+    index > 0 && measure.marks?.includes(NavigationMark.Capo) ? [index] : [],
+  );
+
+  return [0, ...starts];
+};
+
+/** The segment containing `index`, as an inclusive measure range */
+const segmentAt = (starts: readonly number[], index: number, count: number) => {
+  let start = 0;
+
+  for (const candidate of starts) {
+    if (candidate <= index) start = candidate;
+  }
+
+  const next = starts.find((candidate) => candidate > start);
+
+  return { start, end: (next ?? count) - 1 };
+};
+
 const checkNavigation = (score: Score): string[] => {
   const messages: string[] = [];
 
   const marks = new Set<NavigationMark>(score.measures.flatMap((m) => m.marks ?? []));
   const jumps = new Set<NavigationJump>(score.measures.flatMap((m) => (m.jump ? [m.jump] : [])));
+  const starts = segmentStarts(score);
 
   if (dalSegnoJumps.some((jump) => jumps.has(jump)) && !marks.has(NavigationMark.Segno)) {
     messages.push('A dal segno jump requires a Segno mark somewhere in the score');
@@ -123,6 +151,28 @@ const checkNavigation = (score: Score): string[] => {
   if (alFineJumps.some((jump) => jumps.has(jump)) && !marks.has(NavigationMark.Fine)) {
     messages.push('An al Fine jump requires a Fine mark somewhere in the score');
   }
+
+  // A landmark in another segment is unreachable from this jump, so a score
+  // whose Fine sits in a different movement passes the score-wide rule above
+  // and still cannot be performed as written. Only reported when a Fine exists
+  // somewhere — with none at all the rule above has already said so, and two
+  // messages for one mistake help nobody.
+  score.measures.forEach((measure, index) => {
+    if (!measure.jump || !alFineJumps.includes(measure.jump)) return;
+    if (!marks.has(NavigationMark.Fine)) return;
+
+    const segment = segmentAt(starts, index, score.measures.length);
+    const hasFine = score.measures
+      .slice(segment.start, segment.end + 1)
+      .some((entry) => entry.marks?.includes(NavigationMark.Fine));
+
+    if (!hasFine) {
+      messages.push(
+        `The al Fine jump at measure ${index + 1} has no Fine between measures ` +
+          `${segment.start + 1} and ${segment.end + 1}, the section it belongs to`,
+      );
+    }
+  });
 
   const hasAlCodaJump = alCodaJumps.some((jump) => jumps.has(jump));
 
@@ -192,6 +242,25 @@ const checkRepeats = (score: Score): string[] => {
   if (openedAt !== null) {
     messages.push(`The repeat opened at measure ${openedAt + 1} is never closed`);
   }
+
+  // A repeat is a within-section device. One spanning a Capo would send the
+  // performance back across a section boundary it has already left, which is
+  // incoherent whatever playback chooses to do about it — so it is rejected
+  // rather than left as an assumption for the unfolding to make quietly.
+  let sectionOpenedAt: number | null = null;
+
+  score.measures.forEach((measure, i) => {
+    if (i > 0 && measure.marks?.includes(NavigationMark.Capo) && sectionOpenedAt !== null) {
+      messages.push(
+        `The repeat opened at measure ${sectionOpenedAt + 1} spans the section ` +
+          `beginning at measure ${i + 1}`,
+      );
+      sectionOpenedAt = null;
+    }
+
+    if (measure.opening === OpeningBarline.RepeatOpen) sectionOpenedAt = i;
+    if (measure.closing === ClosingBarline.RepeatClose) sectionOpenedAt = null;
+  });
 
   return messages;
 };

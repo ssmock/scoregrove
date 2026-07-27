@@ -592,3 +592,74 @@ describe('Score.check parts and groups', () => {
     expect(error.messages.join(' ')).toContain('ends before it starts');
   });
 });
+
+describe('Score.check, sections', () => {
+  it('rejects a repeat that spans a section boundary', () => {
+    // A repeat is a within-section device; one crossing a Capo would send the
+    // performance back across a boundary it has already left.
+    const error = expectInvalid(
+      Score.check(
+        score(
+          NonEmptyArray.of([
+            measure({ opening: OpeningBarline.RepeatOpen }),
+            measure({ marks: NonEmptyArray.of([NavigationMark.Capo]) }),
+            measure({ closing: ClosingBarline.RepeatClose }),
+          ]),
+        ),
+      ),
+    );
+
+    expect(error.messages).toContain(
+      'The repeat opened at measure 1 spans the section beginning at measure 2',
+    );
+  });
+
+  it('accepts a repeat wholly inside one section', () => {
+    expectOk(
+      Score.check(
+        score(
+          NonEmptyArray.of([
+            measure({ marks: NonEmptyArray.of([NavigationMark.Capo]) }),
+            measure({ opening: OpeningBarline.RepeatOpen }),
+            measure({ closing: ClosingBarline.RepeatClose }),
+          ]),
+        ),
+      ),
+    );
+  });
+
+  it('rejects an al Fine whose Fine is in another section', () => {
+    // Passes the score-wide "a Fine exists somewhere" rule and still cannot be
+    // performed as written, since the jump can never reach it.
+    const error = expectInvalid(
+      Score.check(
+        score(
+          NonEmptyArray.of([
+            measure({ marks: NonEmptyArray.of([NavigationMark.Fine]) }),
+            measure({ marks: NonEmptyArray.of([NavigationMark.Capo]) }),
+            measure({ jump: NavigationJump.DaCapoAlFine }),
+          ]),
+        ),
+      ),
+    );
+
+    expect(error.messages).toContain(
+      'The al Fine jump at measure 3 has no Fine between measures 2 and 3, the section it belongs to',
+    );
+  });
+
+  it('says only one thing when there is no Fine at all', () => {
+    const error = expectInvalid(
+      Score.check(
+        score(
+          NonEmptyArray.of([
+            measure({ marks: NonEmptyArray.of([NavigationMark.Capo]) }),
+            measure({ jump: NavigationJump.DaCapoAlFine }),
+          ]),
+        ),
+      ),
+    );
+
+    expect(error.messages).toEqual(['An al Fine jump requires a Fine mark somewhere in the score']);
+  });
+});

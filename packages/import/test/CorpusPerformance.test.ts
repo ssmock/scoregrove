@@ -38,7 +38,7 @@ const named = (name: string) => checks.find((check) => check.name === name)!;
 
 describe('the whole quartet, performed', () => {
   it('compiles the corpus into a performance', () => {
-    expect(performance.events.length).toBe(10_882);
+    expect(performance.events.length).toBe(14_858);
     expect(performance.durationSeconds).toBeGreaterThan(0);
   });
 
@@ -60,21 +60,20 @@ describe('the whole quartet, performed', () => {
     expect(named('the total duration matches tempo times meter').failures).toEqual([]);
   });
 
-  /**
-   * A real defect, kept running rather than omitted — the same device the
-   * engraving invariants used for the dynamics collisions. When navigation
-   * learns that a Fine ends a *movement* rather than the piece, this starts
-   * failing and forces the number to be revisited.
-   */
-  it('never performs the finale, because a Fine ends the whole score', () => {
-    const failures = named('every written measure is performed').failures;
+  it('performs every written measure, finale included', () => {
+    // Written failing, asserting the 190 measures a score-wide Fine left
+    // unreachable, so that fixing navigation would break it rather than let the
+    // bug sit unnoticed. Sections duly broke it — twice: first the finale
+    // appeared at all, then measure 412 turned out still to be missing, its
+    // repeat having fallen back to measure 0 and inherited a pass count from
+    // movement I that gated out its first ending.
+    expect(named('every written measure is performed').failures).toEqual([]);
 
-    expect(failures).toEqual(['190 of 531 measures are never performed, from 341 to 530']);
-
-    // Measure 294 carries the Fine and 340 the Menuetto's da capo; everything
-    // after the Fine — the entire fourth movement — is unreachable.
+    // The structure that used to swallow the finale: a Fine in the third
+    // movement, a da capo at its end, and a fourth movement after both.
     expect(score.measures[294].marks).toContain('Fine');
     expect(score.measures[340].jump).toBe('DaCapoAlFine');
     expect(score.measures[341].newSection?.title).toBe('IV. Finale');
+    expect(score.measures[341].marks).toContain('Capo');
   });
 });
