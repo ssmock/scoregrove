@@ -63,6 +63,13 @@ const maximumRise = 1;
 /** Vertical distance between beam levels: one thickness plus the gap */
 const levelSpacing = 0.75;
 
+/**
+ * How far a fractional (stub) beam reaches from its stem, in staff spaces.
+ * Never more than half the distance to the neighbour it points at, so two
+ * stubs facing each other cannot meet and read as a full beam.
+ */
+const stubReach = 1.25;
+
 export const Beaming = {
   beamCount(noteValue: NoteValue): number {
     return beamCounts[noteValue] ?? 0;
@@ -71,9 +78,9 @@ export const Beaming = {
   /**
    * Derives beam groups from the time signature's beat structure, as the
    * strategy prescribes (beaming is derived, not stored): consecutive
-   * beamable notes whose onsets share a beat span beam together; rests,
-   * dynamics, longer notes, and span boundaries break the group. Groups of
-   * one keep their flag and are not reported.
+   * beamable notes and chords whose onsets share a beat span beam together;
+   * rests, dynamics, longer notes, and span boundaries break the group. Groups
+   * of one keep their flag and are not reported.
    */
   groups(elements: readonly MeasureElement[], time: TimeSignature): BeamGroup[] {
     const span = groupSpan(time);
@@ -93,7 +100,12 @@ export const Beaming = {
     elements.forEach((element, index) => {
       if (element.kind === 'dynamic') return;
 
-      const beamable = element.kind === 'note' && Beaming.beamCount(element.duration.noteValue) > 0;
+      // A chord beams exactly as a note does: it has one written duration and
+      // one stem, and the several noteheads hanging off that stem change where
+      // the beam sits, not whether there is one.
+      const beamable =
+        (element.kind === 'note' || element.kind === 'chord') &&
+        Beaming.beamCount(element.duration.noteValue) > 0;
 
       if (beamable) {
         const index_ = spanIndex(onset, span);
@@ -116,10 +128,23 @@ export const Beaming = {
 
   /**
    * The geometry of one beamed group: where each stem must end, and the beam
-   * lines (primary plus full secondary runs). The beam slants with the outer
-   * noteheads, clamped, then shifts until every stem keeps its minimum
-   * length. Partial (stub) secondary beams for isolated shorter notes are a
-   * later refinement — single-note runs draw no secondary segment yet.
+   * lines. The beam slants with the outer noteheads, clamped, then shifts until
+   * every stem keeps its minimum length.
+   *
+   * ## Secondary beams, full and fractional
+   *
+   * A secondary level spanning two or more adjacent notes is a full beam
+   * between them. A level belonging to **one** note is a *fractional* beam — a
+   * stub — and without it a dotted-eighth–sixteenth pair prints as two notes
+   * that look like eighths, which is not a spacing quibble but the wrong
+   * rhythm on the page.
+   *
+   * **Which way a stub points** is the only real decision. It points back at
+   * the note before it, except at the start of a group where there is nothing
+   * behind it and it must point forward. That is the conventional default and
+   * it gets the two common figures right: the sixteenth of a dotted-eighth pair
+   * points back at the dotted eighth, and the sixteenth that *opens* a pair
+   * points forward at what follows.
    */
   geometry(args: {
     /** One entry per note in the group, in x order */
@@ -177,15 +202,33 @@ export const Beaming = {
         if (!runEnds) return;
 
         const runEnd = qualifies ? index : index - 1;
+        const offset = -sign * (level - 1) * levelSpacing;
 
         if (runEnd > runStart) {
-          const offset = -sign * (level - 1) * levelSpacing;
-
           lines.push({
             x1: stems[runStart].x,
             y1: tips[runStart] + offset,
             x2: stems[runEnd].x,
             y2: tips[runEnd] + offset,
+            level,
+          });
+        } else {
+          // One note carries this level alone, so it gets a stub rather than
+          // nothing. Half the gap to the neighbour caps the reach, which keeps
+          // two facing stubs from meeting and reading as a full beam.
+          const at = stems[runStart];
+          const forward = runStart === 0;
+          const neighbour = stems[forward ? runStart + 1 : runStart - 1];
+          const reach = Math.min(stubReach, Math.abs(neighbour.x - at.x) / 2);
+          const x1 = forward ? at.x : at.x - reach;
+          const x2 = forward ? at.x + reach : at.x;
+          const y = tips[runStart] + offset;
+
+          lines.push({
+            x1,
+            y1: y + slope * (x1 - at.x),
+            x2,
+            y2: y + slope * (x2 - at.x),
             level,
           });
         }

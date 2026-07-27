@@ -172,15 +172,23 @@ silently becomes load-bearing. Each is also noted at its code site.
 
 - Accidental state is per voice: two voices on one staff don't share carried accidentals, so a
   cancellation printed in one voice is neither suppressed nor restated in the other.
-- A note tied across a barline restates its accidental (tie-aware suppression pending).
+- ~~A note tied across a barline restates its accidental.~~ **Fixed:** the tie carries the
+  alteration and the note prints nothing, and it is transparent to the rest of the measure — a
+  later note of that letter and octave is judged against the key alone, which is the conventional
+  reading. Needs no lookahead: a tie must be continued by the element immediately following it, so
+  only a voice's first sounding element can be receiving one from across the barline.
 - An underfull (pickup) measure takes nearly a full measure's rhythmic width — the final
   column's gap is priced to the time signature's capacity, not the actual content.
 - Rests print at their standard staff rows regardless of voice, so multi-voice measures can
   collide rests with the other voice.
-- No stub (partial) secondary beams: a dotted-eighth–sixteenth figure draws only its primary
-  beam.
-- Chords never beam — a short-value chord keeps its flag, and an adjacent beamable run breaks
-  around it.
+- Dynamics and hairpins sit on one baseline per staff per system, pushed below the deepest content
+  there (`DynamicPlacement`). Marks no longer collide with low notes; what is still fixed is the
+  baseline's _relationship to the staff below it_, so a very deep staff can crowd the next one.
+- ~~No stub (partial) secondary beams~~ — **fixed:** a lone secondary level now draws a fractional
+  beam, pointing back at the note before it or forward when it opens the group, capped at half the
+  gap so two facing stubs cannot meet.
+- ~~Chords never beam~~ — **fixed:** a chord joins a beam group exactly as a note does, each of its
+  tones counting toward the group's stem direction.
 - Chord accidentals stack naively in a single column at the cluster's left; dense chords (e.g.
   altered seconds) will overlap. Dots of offset second-tones can likewise collide.
 - Mid-piece clef changes print full size at the measure start, not as the small change clef

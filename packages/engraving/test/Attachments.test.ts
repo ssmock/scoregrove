@@ -98,13 +98,19 @@ describe('Articulations on chords', () => {
   });
 });
 
-describe('ScoreLayout.staffLabels', () => {
+describe('ScoreLayout staff naming', () => {
   it('carries each staff label for the first system', () => {
-    expect(ScoreLayout.layout(Fixtures.twoStaffMultiVoice(), { width: 60 }).staffLabels).toEqual([
-      'RH',
-      'LH',
-    ]);
+    const names = ScoreLayout.layout(Fixtures.twoStaffMultiVoice(), { width: 60 }).names;
 
-    expect(ScoreLayout.layout(melody, { width: 60 }).staffLabels).toEqual([undefined]);
+    expect(names.full).toEqual(['RH', 'LH']);
+    // No parts on this fixture, so `Staff.label` serves as its own short form
+    expect(names.short).toEqual(['RH', 'LH']);
+    expect(names.margin).toBeGreaterThan(0);
+
+    const unlabelled = ScoreLayout.layout(melody, { width: 60 }).names;
+
+    expect(unlabelled.full).toEqual([undefined]);
+    // Nothing to print means no margin to reserve for it
+    expect(unlabelled.margin).toBe(0);
   });
 });

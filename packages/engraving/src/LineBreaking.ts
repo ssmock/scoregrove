@@ -1,5 +1,6 @@
 import type { Score } from '@scoregrove/domain/Score';
 import { ContextWalk, type MeasureContext } from './ContextWalk';
+import { DynamicPlacement } from './DynamicPlacement';
 import { Hairpins } from './Hairpins';
 import type { LaidOutSystem } from './LayoutTree';
 import { MeasureLayout } from './MeasureLayout';
@@ -148,9 +149,11 @@ export const LineBreaking = {
     );
 
     return VerticalLayout.apply(
-      Voltas.attach(
-        score,
-        Hairpins.attach(score, Slurs.attach(score, Ties.attach(score, assembled))),
+      DynamicPlacement.apply(
+        Voltas.attach(
+          score,
+          Hairpins.attach(score, Slurs.attach(score, Ties.attach(score, assembled))),
+        ),
       ),
     );
   },

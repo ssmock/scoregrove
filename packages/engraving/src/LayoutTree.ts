@@ -143,6 +143,13 @@ export type LaidOutElement = LaidOutNote | LaidOutRest | LaidOutChord | LaidOutD
  * stack toward the noteheads.
  */
 export type LaidOutBeam = {
+  /**
+   * Which voice's beam this is. Without it nothing downstream can tell which
+   * notes hang from it: two voices on one staff overlap in x, so position
+   * alone would gather the other voice's stems — pointing the other way, as
+   * they should.
+   */
+  voice: number;
   x1: number;
   y1: number;
   x2: number;

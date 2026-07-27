@@ -38,3 +38,9 @@ Thumbs.db
 # Live ngrok tunnel URLs (written by `pnpm tunnels`)
 .tunnels.json
 haydn-capture
+
+# Imported scores — regenerate with `pnpm --filter @scoregrove/import run import`
+*.score.json
+packages/import/*.json
+!packages/import/package.json
+!packages/import/tsconfig*.json

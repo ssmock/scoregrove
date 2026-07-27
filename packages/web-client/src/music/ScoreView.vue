@@ -137,7 +137,9 @@ function onContextmenu(
       <SystemView
         :system="system"
         :scale="props.scale"
-        :labels="index === 0 ? laidOut.staffLabels : []"
+        :labels="index === 0 ? laidOut.names.full : laidOut.names.short"
+        :label-width="laidOut.names.margin"
+        :groups="laidOut.groups"
         :bar-handles="props.barHandles"
         :is-last-system="index === laidOut.systems.length - 1"
         :loop-start="props.loopStart"

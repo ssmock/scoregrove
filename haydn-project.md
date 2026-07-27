@@ -137,6 +137,9 @@ Predictions I made that the piece simply does not contain. Each was going to cos
   (32 + 9 + 10 + 6) against voice 1's 10,536. The multi-voice collision problem that
   `rendering-strategy.md` calls "genuinely hard engraving" barely arises here. There are still 22
   `<backup>` and 18 `<forward>` elements to read correctly, but the engraving risk is small.
+  **Two of those places fall inside the smoke-test theme** (measures 131 and 135), so the "simplest
+  possible first target" is not single-voice after all and `VoiceBuilding` had to handle the cursor
+  properly from the first commit rather than later.
 
 ### New gaps the census found that I had not predicted
 
@@ -165,6 +168,9 @@ Predictions I made that the piece simply does not contain. Each was going to cos
    carrying `" dolce"` ×4 and `" sempre"` ×1 (expressive text encoded as dynamics, with
    leading space and non-breaking-space artifacts); three `<words>` containing a bare `♮`. Small
    enough to report-and-drop, and a fair early signal that the encoding is good.
+   **The `<other-dynamics>` cost less than it looked.** Each shares its `<dynamics>` block with a
+   real mark — " dolce" rides on a `p` four times and " sempre" on an `fz` once, which is why 406
+   blocks hold 411 marks — so the loudness is imported and the annotation alone is lost.
 
 ### Structural blockers — a quartet is wrong on the page without these
 
@@ -197,12 +203,14 @@ Beethoven tier, not here.
 Recorded in the two existing gap lists, now annotated with how much this piece actually exercises
 each:
 
-- No stub (partial) secondary beams — with 1,947 sixteenths and 421 thirty-seconds against 3,833
-  eighths, dotted-eighth–sixteenth figures are certain. **High impact.**
-- Chords never beam — **534 chords** (double stops), and they occur inside beamed runs.
-  **High impact.**
-- Accidental state is per voice, and a note tied across a barline restates its accidental —
-  976 accidentals and 350 ties. **Moderate.**
+- ~~No stub (partial) secondary beams~~ — **fixed.** The prediction from 1,947 sixteenths and 421
+  thirty-seconds against 3,833 eighths was right: the work needs **278** fractional beams.
+- ~~Chords never beam~~ — **fixed.** **534 `<chord/>` elements**, which `VoiceBuilding` groups into
+  **502 chords carrying 1,036 tones** (mostly double stops, 32 of them thicker); the two figures
+  count different things and both are right. The prediction that they occur inside beamed runs was
+  right and understated: **238 of the 502 do**, in 75 beam groups.
+- Accidental state is per voice — 976 accidentals and 350 ties. **Moderate.** The tied-across-a-
+  barline half is **fixed**: 147 notes tie across a barline, 30 carrying an explicit accidental.
 - Mid-piece clef changes print full-size at the measure start — hits the cello's tenor-clef
   passage exactly twice. **Low volume, high visibility.**
 - Multi-voice rest placement collides — **near-zero impact here** (57 voice-2 notes total).
@@ -234,6 +242,14 @@ import is wrong" and a debuggable failure.
   the strategy already states — "silent dropping is the one thing this importer must never do."
   Reporting unsupported elements does not enforce it: an element the reader believes it handled but
   quietly discards appears in neither list. The identity closes that hole. **Build this first.**
+  **Not built yet, and the gap is easy to misread.** `Coverage.audit` partitions element _names_,
+  not counts, so the CLI's `unaccounted 0` means every distinct tag in the file appears on one of
+  the four lists — a real check, and the one that caught the score header the moment it moved.
+  But it is silent about _how many_ elements each name stood for, so a reader that handles the
+  first `<notations>` block of a note and quietly discards the second still reads as fully
+  accounted. That exact bug happened, and corpus counts rather than the audit are what found it.
+  Until `ImportReport` totals the elements each reader actually consumed, `unaccounted 0` should
+  be read as "no unknown vocabulary", not as "nothing was dropped".
 - **Per-part element counts** — notes, rests, chord tones, measures — source against `Score`.
 - **Paired-element arithmetic** — `<tied>` start/stop pairs versus tie chains, `<wedge>`
   start/stop versus hairpins, `<slur>` pairs versus slur roles. Each mapping has an expected
@@ -281,14 +297,26 @@ Not proofs, but they fail loudly on whole-class mistakes and cost almost nothing
 - **Page count** against the reference PDF's 26. Crude, but an order-of-magnitude divergence is a
   real signal.
 
-### What the hand-authored fixture is still for
+### The independent oracle — ~~a hand-authored fixture~~ the reference engraving
 
 Every estimator above compares the importer against **the source file**. None can catch an error
 where the importer and the estimator share a misreading of MusicXML semantics — both ignoring
-`<backup>`, say. A small excerpt transcribed from the **printed page** is independent of MusicXML
-entirely, and that is its whole value. Keep it to a handful of bars: enough to pin the semantics,
-small enough that the transcription is unlikely to be wrong itself. Twenty-one bars of hand
-transcription would risk debugging the fixture instead of the importer.
+`<backup>`, say. Something independent of MusicXML is needed to close that.
+
+This document proposed a few bars transcribed by hand from the printed page. **Dropped, and it was
+the wrong instrument for the job.** A hand transcription is a second thing that can be wrong, with
+no way to tell which of the two is — the doc's own caveat about "debugging the fixture instead of
+the importer" applies at four bars as much as at twenty-one, because a fixture small enough to
+trust is too small to cover anything. It would have pinned `<backup>` semantics across two staves
+of one bar and said nothing about the other 530.
+
+**The reference PDF is the independent oracle, and it always was.** It is a published engraving of
+this exact work, derived from no MusicXML at all, covering all 531 measures; the capture harness
+already puts our rendering beside it for one command. Reading the two against each other is the
+check, and it is the same act the project already calls its comparison loop — which is why this
+never needed a separate artifact. The residual risk is a shared misreading that also happens to
+look right on the page, which is small, and smaller than the risk of trusting a transcription we
+wrote ourselves.
 
 ---
 
@@ -329,18 +357,12 @@ Ordered for implementation. Smoke test end-to-end first, breadth second, polish 
       errors are collected and printed, a score that lays out no systems exits 1 with a diagnosis
       rather than writing a blank PNG, and the browser is closed in a `finally` so a failed run
       cannot leave Chromium alive and the process hanging.
-- [ ] Hand-author a **short excerpt** — the theme's first 2–4 bars, all four staves — transcribed
-      from the reference PDF. Deliberately not the whole 21-bar theme: this exists only to pin
-      MusicXML _semantics_ from an independent source, and a long hand transcription risks
-      becoming the thing that is wrong, leaving us debugging the fixture instead of the importer.
-      Everything else is covered by the estimators in section B, which compare against the source
-      file directly and scale to all 531 measures.
-      **Resequenced:** the build order said no importer code until this existed, and seven reader
-      modules have since landed without it. Rather than book that as debt, it now falls immediately
-      after `VoiceBuilding` — `<backup>`/`<forward>` cursor handling is exactly the semantics an
-      independent transcription can falsify and the source-derived estimators cannot, since those
-      compare the importer against the same file it read. The fixture is worth more against the
-      builder than it would have been against the readers.
+- [x] ~~Hand-author a **short excerpt** from the reference PDF.~~ **Dropped — see "The independent
+      oracle" in section B.** It was meant to pin MusicXML semantics from a source independent of
+      MusicXML, which is a real gap; a hand transcription is just the wrong way to close it, being
+      a second thing that can be wrong with no way to tell which of the two is. The reference
+      engraving is the independent oracle, covers all 531 measures rather than four bars, and the
+      capture harness already puts our rendering beside it in one command.
 
 ### Phase 1 — `packages/import`
 
@@ -445,52 +467,168 @@ Ordered for implementation. Smoke test end-to-end first, breadth second, polish 
       instrumented through every reader: that can drift from the code, but not _silently_, because
       the corpus test fails the moment the file holds a name no list mentions. `unrepresented` is
       currently **empty**, since the domain grew somewhere to put everything this corpus contains.
-- [ ] `VoiceBuilding` — **the element builder, and the seam nothing crosses yet.** Every module
-      above reads one thing at a time; this is what assembles them, walking a part's measure
-      children in document order behind a divisions cursor and emitting `StaffContent`: `<note>`
-      through the readers already built, `<chord/>` grouping by document order, `<backup>` and
-      `<forward>` moving the cursor, `<voice>` assigning the line. It is the entire distance
-      between the readers and a `Score`, and therefore between here and the first rendered note.
-      It was absent from this checklist until the code was audited against it — `Coverage.pending`
-      is what named it, listing `backup`, `forward`, and `voice` under a module the plan never had.
-- [ ] `DirectionReading`, **dynamics first** — `<direction>` splits in two, and not where this plan
-      first drew the line. Dynamics are `MeasureElement`s living _inside_ a voice at a position in
-      the stream, so `VoiceBuilding` has to place them and they cannot be deferred past it; the
-      smoke-test theme has 28. Wedges, tempo, and the `<words>` carrying section titles genuinely
-      are measure-level, and follow later alongside `StructureReading`.
-- [ ] `ScoreAssembly` — `TimewiseScore` plus the built measures into a `Score` that passes
-      `Score.check`: staves from the initial clefs, with `parts` and `groups` already reconciled by
-      `PartwiseToTimewise`. Small, but it is what makes the output a domain value rather than a
-      pile of readers.
-- [ ] `MeasureSlicing` — import a measure range, not just a whole file. Required from day one,
-      because the smoke test is movement II's theme inside a 531-measure score. Note this is a
-      **development affordance, not the shipping shape**: the deliverable is one combined `Score`
-      (see below), and slicing exists so the smoke test can be 21 bars instead of 531.
-- [ ] CLI entry — `pnpm --filter @scoregrove/import run <file>` writing score JSON plus the report.
-      Score JSON must be loadable by `Projects.ts` as-is, and it is the seam the capture harness
-      has been waiting on since Phase 0 — these five items together are the whole of what stands
-      between the corpus file and movement II's theme on screen.
-- [ ] `StructureReading` — barlines, repeats, endings/voltas, segno/coda/D.C./D.S., so
-      `NavigationUnfolding` gets real navigation to unfold. Takes the rest of `DirectionReading`
-      with it: wedges, tempo, and the `<words>` that title sections.
-- [ ] `SectionAndCapoSynthesis` — **one combined `Score` for the whole work**, with movements
-      carried by `Measure.newSection` rather than by splitting into four `Score`s. Consequences the
-      importer owns, none of which the source states outright:
-      a section (title + `SectionBreak.Page`) at each movement start, taken from the `<words>`
-      title and the source's own `<print new-page>`; a section (`SectionBreak.System`) at each
-      `Var. I`–`Var. IV` and the `Trio`, matching their `<print new-system>`; and a
-      **`NavigationMark.Capo` at each movement start**, without which the Menuetto's da capo
-      rewinds to the opening of movement I. Capo marks are synthesised — the source never writes
-      one, because in MusicXML the D.C. is implicitly movement-relative.
-- [ ] `ImportReport` — `{ score, consumed: Histogram, unsupported: Histogram, warnings }`. A
-      `Result`, consistent with the rest of the domain. The unsupported histogram ranks all
-      subsequent work; the **consumed** histogram exists so `consumed + unsupported` can be checked
-      against the file's total element count (section B, tier 1) — the accounting identity that
-      turns "never drop silently" from an intention into something enforced, and the per-import
-      runtime counterpart to `Coverage`'s static manifest.
-- [ ] `Verification` — the reusable `--verify` mode implementing section B's estimators, so every
-      future import gets them for free rather than re-deriving a one-off script per piece.
-- [ ] Vitest suite — round-trip the hand-authored excerpt, plus focused fixtures per reader module.
+- [x] **`VoiceBuilding`** — the element builder, absent from this checklist until the code was
+      audited against it; `Coverage.pending` is what named it, listing `backup`, `forward` and
+      `voice` under a module the plan never had. It walks a part's measure children in document
+      order behind a divisions cursor and emits `StaffContent`. **Two coordinate systems meet
+      here**: the cursor moves in _sounded_ divisions, because that is the unit `<backup>` and
+      `<forward>` speak, while the elements it places carry _written_ durations from `<type>`,
+      because that is what the domain models — `DivisionsToDuration` already cross-checks the two,
+      so each is used for what it is good for rather than one being chosen over the other. The
+      load-bearing decision is **the extent rule**: every voice is padded with rests to the
+      furthest the cursor ever reached, which covers a voice entering late, a `<forward>` opening a
+      hole, and a `<forward>` trailing at a measure's end all at once — the last being how this
+      corpus ends a short second voice. Deliberately not the time signature's capacity, which would
+      silently fill the 22 partial measures. Verified over the whole corpus: **2,124 staff-measures
+      built with zero failures**, every voice of every measure spanning the same duration (the
+      sharpest available check on `<backup>`/`<forward>`), an accounting identity tying each class
+      of `<note>` back to its own source total, 14 rests synthesised for the `<forward>`s, and
+      **exactly the 22 short measures `Measure.partial` was sized for, with none overfull** —
+      arrived at from the opposite direction, so the two measurements confirm each other. One
+      warning in 531 measures, a grace note's slur. `Rest.of` gained the `position` argument
+      `PitchReading` had been reading with nowhere to put.
+- [x] **`DirectionReading`, the dynamics half** — `<direction>` splits in two, and not where this
+      plan first drew the line. The split is not "dynamics versus everything else" but **what
+      becomes an element in a voice versus what belongs to the measure**: a `DynamicElement` is a
+      `MeasureElement` sitting at a position, because a mark takes effect at the note after it. So
+      **`<wedge>` came here too**, against the checklist's first guess — `DynamicChange` is a
+      `Dynamic`, so a hairpin is a voice element like any other mark; only tempo and the section
+      titles are genuinely measure-level. 414 dynamics placed across the corpus (406 marks and 8
+      hairpin openings). **One real bug, found by writing the corpus's own measure 131 as a test:**
+      a direction routinely _precedes_ the first note of the voice it belongs to, because a second
+      voice is written by rewinding, so taking the voice from the last note seen put the mark in
+      the previous voice. It now looks forward to the voice it introduces, which is also what
+      "takes effect at the following note" means. Three kinds of loss are reported rather than
+      dropped: a hairpin's _end_ (8, unrepresentable since a change runs to the next dynamic), the
+      `<words>` awaiting `StructureReading` (20), and the expressive text below.
+      `Coverage.unrepresented` is no longer empty — it holds `other-dynamics`, the one thing in
+      this file the model genuinely cannot carry.
+- [x] **`ScoreAssembly`** — `TimewiseScore` plus the built measures into a `Score`, and **the whole
+      531-measure quartet now passes `Score.check`** — staff alignment, part and group bounds,
+      navigation, measure fullness, repeat pairing, volta endings, tie continuity and slur balance,
+      on real music with no fixture in sight. Small, as predicted, because everything hard had
+      already happened; the only decisions were positional. `Score` holds a key, time and clef
+      while `Measure` holds _changes_ to them, so measure 0's declarations become the score's and
+      every later one a change — and a file declaring nothing at measure 0 is refused rather than
+      defaulted, since guessing C major would misspell every accidental in the piece. A measure
+      short of its capacity is flagged `partial` rather than reported, which is safe only because
+      the extent rule makes the alternative failure (a dropped note) show up as cross-voice
+      disagreement instead. Title and composer come from `<work>` and `<identification>`.
+- [x] **`SpannerReconciliation`** — the second module the corpus named that the plan had not. It
+      clears tie _and slur_ roles whose other end is not where the model requires it, and two quite
+      different things cause that. **A slice cuts a spanner**: importing measures 128–148 takes the
+      end of a slur that began in measure 127, and dropping the orphan is simply correct, since
+      nothing is lost that the slice ever contained. **A voice number is not an identity**, which
+      is the real finding rather than a defect. A tie is a relationship between two noteheads, but the
+      model stores it as a _role_ on each end and `Score.check` requires the two to meet inside one
+      voice. MusicXML has no such rule: a voice number there is a per-measure grouping, freely
+      reused, so a line can be voice 1 in one bar and voice 2 in the next while the music runs
+      straight on. This work does it **once**, and the shape is instructive — measure 22 ends on a
+      G4–B4 double stop written as one voice with the G4 tied over, and measure 23 separates the
+      lines so the continuation lands in voice 2. Both ends are correct in the source; only the
+      pairing is unreachable, and since engraving pairs ties within a voice too, it is a tie we
+      could not draw either. So both ends are cleared and reported. What is deliberately **not**
+      done is renumbering the file's voices to make the tie meet — that would be guessing at the
+      writer's intent to flatter our model, and silently rearranging music to do it. It runs for
+      every import rather than for this corpus, because a dangling tie is ordinary in real
+      MusicXML: deleting the note at one end leaves the other behind. **This is containment, not a
+      fix** — losing a tie the source got right is a limitation of our model, and the ways out are
+      weighed under "Ties that outlive a voice number" in Phase 2.
+- [x] **`MeasureSlicing`** — a measure range as a grid in its own right. More than `Array.slice`
+      for one reason: MusicXML declares an attribute where it _changes_, so a slice beginning at
+      measure 128 inherits everything declared before it, and cutting the array plainly would give
+      a score with **no clefs at all** — this file declares them once at measure 0 and never again.
+      The first measure of a slice therefore states the key, time and clef in force at that point
+      whether or not the source restated them. Positional indices keep their original values so an
+      error about measure 131 still names a measure a reader can find; nothing downstream keys on
+      them, because `ScoreAssembly` was changed to decide what is initial by **position in the
+      grid** rather than by the source's own index, which is what makes a slice assemble exactly
+      like a whole file. A **development affordance, not the shipping shape**: the deliverable is
+      one combined `Score`, and this exists so the smoke test can be 21 bars instead of 531.
+- [x] **CLI entry** — `pnpm --filter @scoregrove/import run import <file> [--from=n] [--to=n]`,
+      writing score JSON plus the report. (`run` is not optional: `pnpm import` is a builtin.) It
+      lives in `scripts/` rather than `src/` so the package stays environment-agnostic — reading a
+      file from disk is the caller's job, and this is that caller. **One environment surprise:**
+      every package builds with `moduleResolution: "Bundler"`, so `dist` keeps the extensionless
+      relative specifiers the sources are written with; Vite and Vitest resolve those, Node's ESM
+      loader does not. A 15-line resolver hook, confined to this package's scripts, adds `.js` only
+      where resolution has already failed. The real fix is in the build output or a bundling step,
+      and papering over it repo-wide would hide a genuine inconsistency between how the code is
+      compiled and how it is run.
+- [x] **`StructureReading`** — barlines, repeats, voltas, navigation and tempo, so
+      `NavigationUnfolding` finally has real navigation to unfold: 11 repeats, 4 voltas, a `Fine`
+      at measure 294 and the Menuetto's `DaCapoAlFine` at 340. Three things the corpus settled.
+      **Endings are ranges, not marks**: MusicXML brackets a volta between a start and a stop while
+      `Measure.ending` says "this measure is in volta _n_", so the measures _between_ them have to
+      be filled in — which is why this reads the whole grid at once. **Navigation is read from
+      `<sound>` attributes**, not from the prose beside them, and a da capo is promoted to
+      `DaCapoAlFine` once a Fine is known to exist — resolved after the whole grid, since the Fine
+      may come later. **Tempo has two sources and one slot**: a printed `<words>Allegro` and an
+      unprinted `<sound tempo="112">`. The printed word wins where it names a marking we model,
+      because it is what a reader sees and playback resolves a marking to bpm anyway
+      (`TempoResolution.markingBpm`); where the words are prose the model has no name for — this
+      work's "Poco adagio; cantabile" — the metronome mark carries the measure and the text is
+      reported rather than rounded to the nearest marking it happens to contain. A **repeat that
+      opens and never closes** is dropped and reported, which the whole work never needs and every
+      slice cutting a repeat does.
+- [x] **`SectionAndCapoSynthesis`** — **one combined `Score` for the whole work**, exactly as
+      planned: nine sections, with the four movements taking a page and `Var. I`–`Var. IV` and the
+      `Trio` a system, and a `NavigationMark.Capo` at each movement start without which the
+      Menuetto's da capo rewinds to the opening of movement I. **Where a section begins is read
+      structurally, not by matching titles**: a section starts where a `<print>` forces a break
+      _and_ the measure carries text, and the break's own strength chooses the section's. That is
+      the one place this project reads the engraver's layout rather than re-deriving it, and it
+      earns the exception by carrying structure rather than spacing. **The title is the first
+      unclaimed text on the top part**, and both halves of that were forced by the corpus: a
+      section measure often carries two texts ("Var. I" then "sempre piano"), and requiring the top
+      part came from getting it wrong — the viola's stray "♮" at measure 19 lands on a measure the
+      engraver also broke a system at, and titled a section "♮" until headings had to sit where a
+      heading is actually printed.
+- [x] **`ImportReport`** — the score, four occurrence histograms partitioning all 113,657 elements
+      (93,605 consumed, 20,047 dropped by design, 5 unrepresented, 0 unaccounted), and the
+      warnings. **Building it corrected the plan rather than completing it.** The identity was
+      billed as what "turns _never drop silently_ into something enforced"; it is not. Elements are
+      partitioned by **name** against `Coverage`'s manifest, so the partition balances _by
+      construction_ — a run where it did not would mean the manifest was broken, not the import.
+      What it genuinely catches is a name on **no** list, which is real and did catch the score
+      header the moment it moved. What it cannot catch is a reader meeting an element and
+      discarding part of it: `<notations>` sat in the consumed column throughout the bug where
+      reading only the first block lost 25 staccatos. So a clean report reads "no unknown
+      vocabulary, and every decision stated" — never "nothing was lost". The checks that could say
+      that live below, and the CLI prints the distinction rather than leaving the number to be
+      misread.
+- [x] **`Verification`** — `--verify`, eight estimators, every one comparing the built `Score`
+      against the **source file or against itself** rather than against a manifest, which is
+      exactly what `ImportReport` cannot do. All eight pass on the corpus: `Score.check`;
+      per-measure element counts; a **per-measure pitch digest** matching every letter, alteration
+      and octave in order; cross-part duration agreement; determinism; a slice matching the same
+      measures of the whole; no part below its instrument's lowest string; and rests a minority of
+      the elements. Counts are per (part, measure) throughout, because a score-wide total lets a
+      note dropped in bar 12 cancel one duplicated in bar 300 — and a per-measure failure says
+      _where_ to look. Each catches a class the others miss: counting sees a dropped note but not a
+      wrong octave, the pitch digest sees the octave, cross-part agreement needs no oracle at all
+      and is the sharpest check on `<backup>`/`<forward>`, and the range check is the only one that
+      can catch a whole-class transposition error, since every per-measure comparison would agree
+      with a source and importer that were wrong together. Its own tests deliberately break a score
+      three ways, because a check that cannot fail is worth nothing.
+- [x] **Vitest suite** — focused fixtures per reader module, and the corpus itself at scale: 180
+      tests across nine files, including `Verification`'s deliberate three-way breakage of a score
+      to prove its checks can fail. The round-trip against a hand-authored excerpt is gone with the
+      excerpt.
+
+**Milestone reached: movement II's theme is on screen.** One command imports measures 128–148 and
+a second engraves them, and the result is readable four-staff music — correct clefs, G major, cut
+time, the `fz` and `p` dynamics, fermatas, slurs, the viola's double stop, and the turn in the
+first violin. The import passes `Score.check` and reports 28 decisions. That answers the risk this
+document left open on purpose: **the OpenScore encoding is good.** Nothing in the rendered theme
+suggests we are debugging someone else's transcription, so the fallback to Op. 76 No. 2 is off the
+table.
+
+What the first read-through shows, all of it already on the Phase 3 list and none of it a surprise:
+no bracket and no joined barlines, so the four staves still read as four unrelated instruments; no
+staff labels; and dynamics that collide with the staff and with slurs, since a dynamic is placed
+without consulting what is already there. Slur placement is the one judgement call worth a second
+look — many sit below where the reference puts them above.
 
 ### Phase 2 — Domain additions (driven by the report, expected order)
 
@@ -529,6 +667,20 @@ blockers — they came out of the census, not the original prediction.
       encodes (groups open and close _between_ `<score-part>` entries), and the corpus's bracket
       comes through as one group over all four staves with barlines joined. **Engraving does not
       draw it yet** — the information is carried, the rendering is Phase 3.
+- [ ] **Ties that outlive a voice number** — the open question `TieReconciliation` records rather
+      than answers. Dropping a tie the source got right is a limitation, not a resolution: the
+      music is continuous and both ends are correctly encoded, and we lose it only because our tie
+      is a _role on each end_ that `Score.check` requires to meet inside one voice index, while
+      MusicXML treats a voice number as a per-measure grouping that is freely reused. Three ways
+      out, none obviously right. **Relax the check to per staff** — cheap, but it would pair
+      genuinely independent lines that happen to share a pitch, weakening a check that is otherwise
+      catching real errors. **Give a tie an identity** rather than a role on each end, which is
+      what the notation actually is and would also settle the same question for slurs (see below) —
+      the honest fix, and much the largest. **Track voice continuity at import**, matching a
+      measure's voices to the previous measure's by pitch and position rather than by number, which
+      keeps the domain untouched but puts a heuristic in the importer. Only one tie in this work
+      hits it, so it is not blocking; do it when a piece makes it hurt, and prefer the second
+      option if the slur work lands first, since they are the same problem twice.
 - [ ] **Slur numbering** — make overlapping and nested slurs distinguishable; touches `Notations`,
       engraving's `Slurs`, and the importer's `NotationReading` at once. **Downgraded on
       measurement:** section A called this the dominant domain change on the strength of 2,416
@@ -574,22 +726,91 @@ review item 4 for when it becomes due.
 
 ### Phase 3 — Engraving
 
-- [ ] Bracket and joined barlines for the grouped staves.
-- [ ] Staff labels: full names on the first system, abbreviations after. `TextMeasure` exists but
-      the staff-label margin is still a fixed 8 spaces and does not consult it — a four-staff
-      score with "Violoncello" in the margin will expose that immediately.
+- [x] **Bracket and joined barlines for the grouped staves.** The single most visible defect, and
+      the first thing the rendered theme confirmed: without them four staves read as four unrelated
+      instruments. `StaffGroup` reaches the rendering side through `LaidOutScore.groups`, so nothing
+      downstream needs the `Score` — which staves a group spans is a domain fact, where its bracket
+      lands is geometry the system already has in `staffYs`. Three pieces: the **bracket** is drawn
+      as a path rather than set from Bravura's `bracketTop`/`bracketBottom`, because those are
+      fixed-size glyphs and a bracket has to span whatever distance vertical layout put between the
+      staves; the **systemic barline** closes the left edge, running unbroken since there is no
+      per-staff barline at x = 0 to join up with; and the **joined barlines** are drawn as bridges
+      across the gaps _between_ staves rather than by redrawing each barline full height, which
+      keeps every repeat dot where its own staff already put it.
+- [x] **Staff labels: full names on the first system, abbreviations after.** It did expose the
+      fixed 8-space margin immediately — "Violoncello" overran it. The margin is now the widest
+      label actually printed, measured with the same injected `TextMeasurer` the rest of the
+      pipeline uses, and nothing printed means no margin at all. Names come from `Score.parts`
+      where it has them and fall back to `Staff.label`, so every hand-authored fixture prints
+      exactly what it printed before parts existed; a part spanning several staves names only its
+      first, which is how a grand staff is printed. **The corpus has no `<part-abbreviation>`**, as
+      the census warned, so the short form falls back to the full name and later systems still read
+      "Violoncello" — correct given the data, and the cue that authoring the short forms is ours to
+      do.
 - [x] Ornament glyphs — `ornamentTrill` and `ornamentTurn` extracted and drawn above the note,
       with marks now stacking by their own bounding boxes rather than a fixed step.
 - [ ] Remaining ornament glyphs (mordents, inverted turn) when a piece asks. Added to the
       extraction list in
       `generate-bravura.mjs` and a regenerate.
-- [ ] Stub (partial) secondary beams.
-- [ ] Chord beaming.
-- [ ] Tie-aware accidental suppression across barlines.
+- [x] **Stub (partial) secondary beams.** `Beaming.geometry` drew a secondary level only where two
+      or more adjacent notes carried it (`runEnd > runStart`), so a level belonging to **one** note
+      produced nothing at all — and a dotted-eighth–sixteenth pair printed as two notes that look
+      like eighths, which is the wrong rhythm on the page rather than a spacing quibble. A lone
+      level now draws a fractional beam. **Which way it points is the only real decision**: back at
+      the note before it, except at the start of a group where there is nothing behind it and it
+      must point forward. That is the conventional default and it gets both common figures right.
+      The reach is capped at half the distance to the neighbour, so two facing stubs cannot meet
+      and read as a full beam — a rhythm neither note has. **278 fractional beams** across the
+      work, against the census's prediction that dotted-eighth–sixteenth figures were "certain".
+- [x] **Chord beaming.** A one-line cause with a five-site fix: `Beaming.groups` tested
+      `element.kind === 'note'`, so a chord could never join a beam, and `MeasureLayout` never
+      registered one for the geometry pass or passed it a beam direction. A chord beams exactly as
+      a note does — one written duration, one stem — and its several noteheads change where the
+      beam sits, not whether there is one; each tone now counts toward the group's stem direction,
+      since the beam has to clear all of them. **238 of the corpus's 502 chords beam**, across 75
+      groups, every one of which drew a flag before. The second violin's repeated double stops in
+      measures 26–30 are the clearest case: continuous sixteenth runs where there had been a flag
+      per chord.
+- [x] **Tie-aware accidental suppression across barlines.** A note tied over a barline restated its
+      accidental, which reads as a second, fresh alteration rather than a continuation. It now
+      prints nothing — and is **transparent to the rest of the measure**, not seeding the accidental
+      state, so a later note of that letter and octave is judged against the key alone and states
+      itself. That is the conventional reading: the tied accidental holds for the tied note, not
+      for the bar it lands in. **It needed no lookahead into the previous measure**, which was the
+      thing that made this look bigger than it was: a tie must be continued by the element
+      immediately following it — `Score.check` enforces exactly that — so a tie received anywhere
+      but at a voice's first sounding element came from earlier in the same measure, where the
+      state already carries the alteration and nothing prints anyway. 147 notes tie across a
+      barline in this work, 30 of them carrying an explicit accidental.
 - [ ] Multi-voice rest placement for divisi.
 - [ ] Slur segments across 3+ systems.
-- [ ] Invariant test suite over the imported corpus (collisions, page width, measure boxes, stem
-      consistency, measure capacity).
+- [x] **Invariant test suite over the imported corpus.** Four properties any correct engraving has
+      whatever its house style, run over all 531 measures: **systems fit the page width**, **no
+      element escapes its measure**, **every note under one beam agrees on stem direction**, and
+      **a dynamic clears the notes on its staff**. The first three pass. Measure capacity is
+      already `Score.check`'s and runs in `Verification`. The invariants live in engraving, which
+      knows what a layout tree means; the corpus run lives with the corpus, which is why `import`
+      gained engraving as a dev dependency. Each violation names its system, measure and staff,
+      because a bare count over 531 measures is not something anyone can act on.
+      **Two findings, and the first was mine.** The stem-direction check reported three broken
+      beams that were not broken: it gathered elements by x position, and two voices on one staff
+      overlap in x with stems pointing opposite ways, exactly as they should. The layout tree could
+      not express "under this beam" at all, so `LaidOutBeam` gained a `voice`. The second is real:
+      **39 places where a dynamic collides with a notehead**, all one cause — `dynamicY` is a fixed
+      7 spaces below the top line and never consults what hangs below the staff. It is kept as a
+      running test asserting the count rather than omitted, so fixing placement would fail it and
+      force the number to be revisited — which is exactly what happened, twice, in the item below.
+- [x] **Dynamic placement that consults the staff below it** — `DynamicPlacement`, and the 39
+      collisions are **zero**. One baseline per staff per system, set by the deepest content
+      anywhere in that staff's slice: nudging each mark independently would clear every collision
+      and leave the row staggered, which reads worse than the collision it fixed. Hairpins move
+      with the marks, since they share the baseline on purpose. It is a **pass rather than a
+      placement rule** because the depth is not knowable when a measure is laid out — it depends on
+      every measure of the system, and which measures share one is decided later by line breaking;
+      so it runs after the spanners attach and before `VerticalLayout` measures the system, whose
+      extents then include the marks where they finally sit. **The invariant caught the fix being
+      incomplete**: the first pass left four, every one a flat or a sharp hanging lower than the
+      notehead that cleared the mark, because only noteheads were being counted as obstacles.
 
 ### Phase 4 — Playback
 
@@ -676,20 +897,19 @@ calling this piece done.
 ## Build order
 
 1. ~~Phase 0 in full before any importer code.~~ **Overtaken, deliberately.** The source, the
-   reference, and the capture command exist; the hand-authored excerpt does not, and seven reader
-   modules landed without it. Resequenced to step 3 rather than booked as debt — see Phase 0.
+   reference and the capture command exist; the hand-authored excerpt was dropped rather than
+   deferred, the reference engraving being the independent oracle it was standing in for.
 2. **Get the theme on screen.** `VoiceBuilding` → `DirectionReading` (dynamics) → `ScoreAssembly` →
    `MeasureSlicing` → CLI, then idx 128–148 through the capture harness. Success is 21 rendered
    bars to read against the PDF — which is also the first real test of the one risk this document
    leaves open on purpose, whether the OpenScore encoding is a _good_ transcription.
-3. Hand-author the excerpt and cross-check `VoiceBuilding` against it, independently of MusicXML.
-4. First full report on movement II. Read the histogram before deciding anything else.
-5. Staff grouping and part identity — the two structural blockers. **The domain half is done**
+3. First full report on movement II. Read the histogram before deciding anything else.
+4. Staff grouping and part identity — the two structural blockers. **The domain half is done**
    (`Part`, `StaffGroup`); what remains is Phase 3's bracket and joined barlines, which come
    regardless of what the histogram says, because the page is wrong without them.
-6. Histogram top-down, re-importing after each fix.
-7. Movement II complete → I → III → IV, taking the same loop each time.
-8. Playback fidelity once the engraving is readable. A wrong score played beautifully is still
+5. Histogram top-down, re-importing after each fix.
+6. Movement II complete → I → III → IV, taking the same loop each time.
+7. Playback fidelity once the engraving is readable. A wrong score played beautifully is still
    wrong.
 
 ## Items for review — all resolved

@@ -1,5 +1,6 @@
 import type { Score } from '@scoregrove/domain/Score';
 import { ContextWalk } from './ContextWalk';
+import { DynamicPlacement } from './DynamicPlacement';
 import type { LaidOutSystem } from './LayoutTree';
 import { Hairpins } from './Hairpins';
 import { MeasureLayout } from './MeasureLayout';
@@ -59,9 +60,11 @@ export const SystemLayout = {
     };
 
     return VerticalLayout.apply(
-      Voltas.attach(
-        score,
-        Hairpins.attach(score, Slurs.attach(score, Ties.attach(score, [system]))),
+      DynamicPlacement.apply(
+        Voltas.attach(
+          score,
+          Hairpins.attach(score, Slurs.attach(score, Ties.attach(score, [system]))),
+        ),
       ),
     )[0];
   },

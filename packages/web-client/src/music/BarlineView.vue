@@ -16,8 +16,13 @@ const props = withDefaults(
     x: number;
     top?: number;
     bottom?: number;
+    /**
+     * Repeat dots are drawn once per staff, so the segments bridging the gap
+     * between two joined staves must not repeat them.
+     */
+    dots?: boolean;
   }>(),
-  { top: 0, bottom: 4 },
+  { top: 0, bottom: 4, dots: true },
 );
 
 const thin = engravingDefaults.thinBarlineThickness;
@@ -62,6 +67,7 @@ const lines = computed((): Line[] => {
 });
 
 const dotX = computed(() => {
+  if (!props.dots) return undefined;
   if (props.kind === 'RepeatClose') return props.x - thick - gap - thin - gap - dotRadius;
   if (props.kind === 'RepeatOpen') return props.x + thick + gap + thin + gap + dotRadius;
 

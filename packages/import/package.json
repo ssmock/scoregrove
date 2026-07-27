@@ -11,6 +11,7 @@
   },
   "scripts": {
     "build": "tsc -b",
+    "import": "node --import ./scripts/register-resolver.mjs scripts/import.mjs",
     "test": "tsc --noEmit -p tsconfig.test.json && vitest run",
     "test:watch": "vitest"
   },
@@ -19,6 +20,7 @@
     "@rgrove/parse-xml": "^4.2.2"
   },
   "devDependencies": {
+    "@scoregrove/engraving": "workspace:*",
     "@types/node": "^26.1.1",
     "typescript": "^7.0.2",
     "vitest": "^4.1.10"

@@ -1,9 +1,13 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue';
+import type { StaffGroup } from '@scoregrove/domain/Part';
+import { engravingDefaults } from '@scoregrove/engraving/Bravura';
 import type { LaidOutSystem } from '@scoregrove/engraving/LayoutTree';
+import BarlineView from './BarlineView.vue';
 import HairpinView from './HairpinView.vue';
 import MeasureView from './MeasureView.vue';
 import SlurArc from './SlurArc.vue';
+import StaffBracket from './StaffBracket.vue';
 import StaffLabel from './StaffLabel.vue';
 import StaffLines from './StaffLines.vue';
 import TieArc from './TieArc.vue';
@@ -31,6 +35,10 @@ const props = withDefaults(
     system: LaidOutSystem;
     scale?: number;
     labels?: readonly (string | undefined)[];
+    /** Left margin reserved for the labels, in staff spaces; measured by the layout */
+    labelWidth?: number;
+    /** Brackets and braces over runs of staves, drawn at the system's left edge */
+    groups?: readonly StaffGroup[];
     /** Show a clickable playback handle at each bar's opening barline */
     barHandles?: boolean;
     /** The system holding the piece's final barline — it gets the extra end-of-piece handle */
@@ -46,6 +54,8 @@ const props = withDefaults(
   {
     scale: 10,
     labels: () => [],
+    labelWidth: 8,
+    groups: () => [],
     barHandles: false,
     isLastSystem: false,
     loopStart: null,
@@ -109,8 +119,78 @@ function onBarContextmenu(measureIndex: number, event: MouseEvent): void {
   emit('barcontextmenu', { measureIndex, clientX: event.clientX, clientY: event.clientY });
 }
 
-/** The left margin reserved when any staff prints a label */
-const labelMargin = computed(() => (props.labels.some((label) => label) ? 8 : 0));
+/**
+ * The left margin, reserved for whichever of the labels and the group signs
+ * needs more room. A bracket hangs about a space and a half left of the
+ * barline, so a score with no labels at all still needs a little margin to draw
+ * it in — which is exactly the case for every system after the first.
+ */
+const bracketMargin = 1.6;
+
+const thinBarline = engravingDefaults.thinBarlineThickness;
+
+const labelMargin = computed(() => {
+  const forLabels = props.labels.some((label) => label) ? props.labelWidth : 0;
+  const forGroups = props.groups.length ? bracketMargin : 0;
+
+  return Math.max(forLabels, forGroups);
+});
+
+/**
+ * Each group's vertical span in system coordinates: the top line of its first
+ * staff to the bottom line of its last. A group naming staves this system does
+ * not have is skipped rather than clamped — that would be a `Score.check`
+ * failure, not something to paper over here.
+ */
+const groupSpans = computed(() =>
+  props.groups.flatMap((group) => {
+    const first = props.system.staffYs[group.from];
+    const last = props.system.staffYs[group.to];
+
+    if (first === undefined || last === undefined) return [];
+
+    return [{ symbol: group.symbol, y1: first, y2: last + 4 }];
+  }),
+);
+
+/**
+ * The systemic barline: the vertical rule closing the left edge of a joined
+ * group. Unlike the bridges below it runs unbroken from the group's first staff
+ * to its last, because there is no per-staff barline at x = 0 to join up with —
+ * a staff simply begins there.
+ */
+const systemicBarlines = computed(() =>
+  props.groups
+    .filter((group) => group.barlines)
+    .flatMap((group) => {
+      const first = props.system.staffYs[group.from];
+      const last = props.system.staffYs[group.to];
+
+      return first === undefined || last === undefined ? [] : [{ y1: first, y2: last + 4 }];
+    }),
+);
+
+/**
+ * The vertical runs a joined group's barlines have to fill: the gaps *between*
+ * its staves. Each staff already draws its own barline across its own five
+ * lines, so joining is a matter of bridging the space between them rather than
+ * redrawing anything — which also keeps the repeat dots, drawn once per staff,
+ * exactly where they belong.
+ */
+const barlineBridges = computed(() =>
+  props.groups
+    .filter((group) => group.barlines)
+    .flatMap((group) =>
+      Array.from({ length: Math.max(0, group.to - group.from) }, (_gap, offset) => {
+        const above = props.system.staffYs[group.from + offset];
+        const below = props.system.staffYs[group.from + offset + 1];
+
+        return above === undefined || below === undefined
+          ? []
+          : [{ top: above + 4, bottom: below }];
+      }).flat(),
+    ),
+);
 
 /** The vertical bounds come measured from the layout — no guessed margins */
 const height = computed(() => props.system.bottom - props.system.top);
@@ -206,6 +286,49 @@ function onContextmenu(event: MouseEvent): void {
         />
       </template>
     </g>
+    <!--
+      The group signs and the barlines running through a joined group. Both sit
+      outside the per-staff groups above because both span staves: they are the
+      only things in a system that do.
+    -->
+    <line
+      v-for="(rule, ruleIndex) in systemicBarlines"
+      :key="`systemic-${ruleIndex}`"
+      x1="0"
+      :y1="rule.y1"
+      x2="0"
+      :y2="rule.y2"
+      stroke="currentColor"
+      :stroke-width="thinBarline"
+    />
+    <StaffBracket
+      v-for="(span, groupIndex) in groupSpans"
+      :key="`group-${groupIndex}`"
+      :symbol="span.symbol"
+      :y1="span.y1"
+      :y2="span.y2"
+    />
+    <template v-for="(bridge, bridgeIndex) in barlineBridges">
+      <template v-for="entry in props.system.measures" :key="`join-${bridgeIndex}-${entry.index}`">
+        <BarlineView
+          v-if="entry.staves[0]?.opening"
+          :kind="entry.staves[0]!.opening!"
+          :x="entry.x"
+          :top="bridge.top"
+          :bottom="bridge.bottom"
+          :dots="false"
+        />
+        <BarlineView
+          v-if="entry.staves[0]"
+          :kind="entry.staves[0]!.closing"
+          :x="entry.x + entry.staves[0]!.width"
+          :top="bridge.top"
+          :bottom="bridge.bottom"
+          :dots="false"
+        />
+      </template>
+    </template>
+
     <!--
       Playback bar handles: a small clickable tab above each measure's opening
       edge, with the loop passage drawn as one continuous band over the bars

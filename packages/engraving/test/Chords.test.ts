@@ -3,7 +3,7 @@ import { Clef } from '@scoregrove/domain/Clef';
 import { Duration, NoteValue } from '@scoregrove/domain/Duration';
 import { Mode } from '@scoregrove/domain/KeySignature';
 import { StaffContent, type Measure } from '@scoregrove/domain/Measure';
-import { Chord, Note, TieRole, type MeasureElement } from '@scoregrove/domain/MeasureElement';
+import { Chord, Note, Rest, TieRole, type MeasureElement } from '@scoregrove/domain/MeasureElement';
 import { NonEmptyArray } from '@scoregrove/domain/NonEmptyArray';
 import { Accidental, PitchClass, PitchLetter, type Pitch } from '@scoregrove/domain/Pitch';
 import { PositiveInteger } from '@scoregrove/domain/PositiveInteger';
@@ -123,10 +123,13 @@ describe('MeasureLayout chords', () => {
   });
 
   it('gives flagged values one flag on the chord, not per tone', () => {
+    // The rest breaks the beam group, so this eighth chord keeps its flag —
+    // an eighth note next to it would beam with it instead, which is the point
+    // of the test below.
     const score = scoreOf([
       [
         chord([pitch(PitchLetter.C, 4), pitch(PitchLetter.G, 4)], NoteValue.Eighth),
-        Note.of(pitch(PitchLetter.C, 4), Duration.of(NoteValue.Eighth)),
+        Rest.of(Duration.of(NoteValue.Eighth)),
         Note.of(pitch(PitchLetter.C, 4), Duration.of(NoteValue.Half)),
         Note.of(pitch(PitchLetter.C, 4), Duration.of(NoteValue.Quarter)),
       ],
@@ -135,6 +138,26 @@ describe('MeasureLayout chords', () => {
     const [laid] = layoutFirst(score);
 
     expect(laid.flag).toBeDefined();
+  });
+
+  it('beams a chord together with the notes around it', () => {
+    // 534 `<chord/>` elements in the Haydn corpus, many inside beamed runs.
+    // A chord has one written duration and one stem, so it beams exactly as a
+    // note does; its several noteheads change where the beam sits, not whether
+    // there is one.
+    const score = scoreOf([
+      [
+        chord([pitch(PitchLetter.C, 4), pitch(PitchLetter.G, 4)], NoteValue.Eighth),
+        Note.of(pitch(PitchLetter.E, 4), Duration.of(NoteValue.Eighth)),
+        Note.of(pitch(PitchLetter.C, 4), Duration.of(NoteValue.Half)),
+        Note.of(pitch(PitchLetter.C, 4), Duration.of(NoteValue.Quarter)),
+      ],
+    ]);
+
+    const [laid] = layoutFirst(score);
+
+    expect(laid.flag).toBeUndefined();
+    expect(laid.stem).toBeDefined();
   });
 });
 

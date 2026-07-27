@@ -92,7 +92,7 @@ export type Rest = {
 };
 
 export const Rest = {
-  of(duration: Duration, extras: { fermata?: boolean } = {}): Rest {
+  of(duration: Duration, extras: { fermata?: boolean; position?: Pitch } = {}): Rest {
     return { kind: 'rest', duration, ...extras };
   },
 

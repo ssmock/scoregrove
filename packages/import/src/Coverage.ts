@@ -74,19 +74,11 @@ export const consumed: readonly string[] = [
   'notehead',
   'display-step',
   'display-octave',
-  // Staff grouping
-  'part-group',
-  'group-symbol',
-  'group-barline',
-];
-
-/**
- * Element names read by a module not yet written. Distinct from the categories
- * below because the plan is to consume them — listing them here keeps the audit
- * honest about what is pending rather than pretending it is handled.
- */
-export const pending: readonly string[] = [
-  // DirectionReading
+  // The element builder's stream: the cursor moves and the voice each note is in
+  'backup',
+  'forward',
+  'voice',
+  // Directions, in the half that becomes an element inside a voice
   'direction',
   'direction-type',
   'dynamics',
@@ -95,27 +87,35 @@ export const pending: readonly string[] = [
   'f',
   'ff',
   'fz',
-  'other-dynamics',
   'wedge',
-  'words',
-  'sound',
-  // StructureReading
+  // Staff grouping
+  'part-group',
+  'group-symbol',
+  'group-barline',
+  // Structure: barlines, repeats, voltas, and the navigation/tempo <sound>
   'barline',
   'bar-style',
   'repeat',
   'ending',
-  // The element builder
-  'backup',
-  'forward',
-  'voice',
+  'sound',
+  'words',
   // Score header
   'work',
   'work-title',
-  'work-number',
   'identification',
   'creator',
-  'rights',
 ];
+
+/**
+ * Element names read by a module not yet written. Distinct from the categories
+ * below because the plan is to consume them — listing them here keeps the audit
+ * honest about what is pending rather than pretending it is handled.
+ *
+ * **Currently empty**: every element name this corpus contains now reaches a
+ * reader. That is a statement about vocabulary, not about fidelity — see
+ * `unrepresented` for what is read and still cannot be carried.
+ */
+export const pending: readonly string[] = [];
 
 /**
  * Element names read and deliberately not carried, each with the reason. These
@@ -125,7 +125,10 @@ export const pending: readonly string[] = [
  */
 export const ignored: Readonly<Record<string, string>> = {
   // Engraver's layout, which we re-engrave from scratch by design
-  print: 'layout is re-derived; the source page and system breaks are not imported',
+  print:
+    'spacing is re-derived. The one exception is read rather than ignored: a <print> break at a ' +
+    'measure carrying a heading is what tells SectionAndCapoSynthesis where a movement or ' +
+    'variation begins, since the file marks that nowhere else',
   'page-layout': 'layout is re-derived',
   'page-height': 'layout is re-derived',
   'page-width': 'layout is re-derived',
@@ -174,6 +177,8 @@ export const ignored: Readonly<Record<string, string>> = {
   'encoding-date': 'describes the encoder, not the music',
   software: 'describes the encoder, not the music',
   source: 'recorded in the corpus PROVENANCE instead',
+  rights: 'the corpus licence is recorded in PROVENANCE, not carried per score',
+  'work-number': 'the catalogue number is part of the title we print',
   supports: 'declares encoder capabilities, not musical content',
 };
 
@@ -182,12 +187,15 @@ export const ignored: Readonly<Record<string, string>> = {
  * loss, listed so it can be argued with — and each is reported at its site so
  * a file that uses one says so.
  *
- * **Currently empty**, and deliberately so: everything this corpus contains is
- * now carried by the model, whether or not the engraver draws it. Notehead
- * style, a rest's chosen row, and staff grouping each lived here until the
- * domain grew somewhere to put them.
+ * Notehead style, a rest's chosen row, and staff grouping each lived here until
+ * the domain grew somewhere to put them.
  */
-export const unrepresented: Readonly<Record<string, string>> = {};
+export const unrepresented: Readonly<Record<string, string>> = {
+  'other-dynamics':
+    'expressive text encoded as a dynamic (" dolce", " sempre"); the domain models loudness, ' +
+    'not words. Each shares its <dynamics> block with a real mark, so the loudness survives ' +
+    'and the annotation alone is lost',
+};
 
 export type CoverageAudit = {
   /** Names met in the file and turned into domain data */

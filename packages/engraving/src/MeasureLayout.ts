@@ -279,7 +279,13 @@ export const MeasureLayout = {
           const positions = group.elements.flatMap((elementIndex) => {
             const element = voice.elements[elementIndex];
 
-            return element.kind === 'note' ? [StaffPosition.of(context.clef, element.pitch)] : [];
+            if (element.kind === 'note') return [StaffPosition.of(context.clef, element.pitch)];
+
+            // Every tone of a chord counts towards which way the group's stems
+            // point, since the group has to clear all of them.
+            return element.kind === 'chord'
+              ? element.tones.map((tone) => StaffPosition.of(context.clef, tone.pitch))
+              : [];
           });
 
           const direction = multiVoice
@@ -351,7 +357,8 @@ export const MeasureLayout = {
     /** Place every staff's elements at their column x */
     const staves = contexts.map((context, staffIndex): LaidOutMeasure => {
       const elements: LaidOutElement[] = [];
-      const laidNotes = new Map<string, LaidOutNote>();
+      /** Beamed notes *and chords*, whose stems the beam geometry then extends */
+      const laidBeamable = new Map<string, LaidOutNote | LaidOutChord>();
       const beams: LaidOutBeam[] = [];
 
       /** Sounded elements per voice in x order, for tuplet run detection */
@@ -428,13 +435,21 @@ export const MeasureLayout = {
                   item.beamDirection,
                 )
               : item.value.kind === 'chord'
-                ? layoutChord(item.value, address, column.x, context, item.printed, voiceDirection)
+                ? layoutChord(
+                    item.value,
+                    address,
+                    column.x,
+                    context,
+                    item.printed,
+                    voiceDirection,
+                    item.beamDirection,
+                  )
                 : layoutRest(item.value, address, restX);
 
           elements.push(laid);
 
-          if (laid.kind === 'note' && item.beamDirection) {
-            laidNotes.set(`${item.voice}:${item.element}`, laid);
+          if ((laid.kind === 'note' || laid.kind === 'chord') && item.beamDirection) {
+            laidBeamable.set(`${item.voice}:${item.element}`, laid);
           }
 
           {
@@ -489,10 +504,12 @@ export const MeasureLayout = {
         .forEach((entry) => {
           entry.groups.forEach((group) => {
             const members = group.elements.flatMap((elementIndex) => {
-              const laid = laidNotes.get(`${entry.voice}:${elementIndex}`);
+              const laid = laidBeamable.get(`${entry.voice}:${elementIndex}`);
               const element = entry.elements[elementIndex];
 
-              return laid?.stem && element.kind === 'note' ? [{ laid, note: element }] : [];
+              return laid?.stem && (element.kind === 'note' || element.kind === 'chord')
+                ? [{ laid, element }]
+                : [];
             });
 
             if (members.length < 2) return;
@@ -501,10 +518,13 @@ export const MeasureLayout = {
             const up = direction === StemDirection.Up;
 
             const { tips, lines } = Beaming.geometry({
-              stems: members.map(({ laid, note }) => ({
+              stems: members.map(({ laid, element }) => ({
                 x: laid.stem!.x,
+                // The end of the stem the beam does *not* attach to — for a
+                // chord that is its furthest notehead, which is what makes the
+                // beam clear the whole cluster rather than just its nearest tone.
                 noteY: up ? laid.stem!.bottom : laid.stem!.top,
-                count: Beaming.beamCount(note.duration.noteValue),
+                count: Beaming.beamCount(element.duration.noteValue),
               })),
               direction,
             });
@@ -520,6 +540,7 @@ export const MeasureLayout = {
             beams.push(
               ...lines.map((line) => ({
                 ...line,
+                voice: entry.voice,
                 thickness: engravingDefaults.beamThickness,
                 direction,
               })),
@@ -841,6 +862,8 @@ const layoutChord = (
   context: MeasureContext,
   printed: readonly (Accidental | undefined)[],
   voiceDirection?: StemDirection,
+  /** Set when this chord is in a beam group, which fixes its stem and drops its flag */
+  beamDirection?: StemDirection,
 ): LaidOutChord => {
   const notehead = Glyphs.forNotehead(chord.duration.noteValue);
   const headWidth = Glyphs.width(notehead);
@@ -851,7 +874,8 @@ const layoutChord = (
     position: StaffPosition.of(context.clef, tone.pitch),
   }));
 
-  const direction = voiceDirection ?? Stems.direction(toneData.map((tone) => tone.position));
+  const direction =
+    beamDirection ?? voiceDirection ?? Stems.direction(toneData.map((tone) => tone.position));
   const up = direction === StemDirection.Up;
 
   const offsetX = up
@@ -930,7 +954,10 @@ const layoutChord = (
       direction,
     };
 
-    const flagGlyph = Glyphs.forFlag(chord.duration.noteValue, direction);
+    // A beamed chord draws the beam instead of a flag, exactly as a note does
+    const flagGlyph = beamDirection
+      ? undefined
+      : Glyphs.forFlag(chord.duration.noteValue, direction);
 
     if (flagGlyph) {
       const flagAnchors = Glyphs.data(flagGlyph).anchors;

@@ -3,14 +3,23 @@ import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 import { Clef } from '@scoregrove/domain/Clef';
 import { Result } from '@scoregrove/domain/Result';
+import { Score } from '@scoregrove/domain/Score';
 import { Duration, NoteValue } from '@scoregrove/domain/Duration';
+import { Fraction } from '@scoregrove/domain/Fraction';
+import { Chord, DynamicElement, Note, Rest } from '@scoregrove/domain/MeasureElement';
+import { TimeSignature } from '@scoregrove/domain/TimeSignature';
 import type { Pitch } from '@scoregrove/domain/Pitch';
 import { DivisionsToDuration } from '../src/DivisionsToDuration';
 import { PartwiseToTimewise } from '../src/PartwiseToTimewise';
 import { Coverage } from '../src/Coverage';
+import { DirectionReading } from '../src/DirectionReading';
+import { ImportReport } from '../src/ImportReport';
 import { NotationReading } from '../src/NotationReading';
 import { PitchReading } from '../src/PitchReading';
 import { Reporting } from '../src/Reporting';
+import { ScoreAssembly } from '../src/ScoreAssembly';
+import { Verification } from '../src/Verification';
+import { VoiceBuilding } from '../src/VoiceBuilding';
 import { XmlReading } from '../src/XmlReading';
 
 /**
@@ -497,17 +506,22 @@ describe('the Haydn corpus, element coverage', () => {
     expect(audit.unaccounted).toEqual([]);
   });
 
-  it('loses nothing the file contains', () => {
-    // The whole point of the exercise: every element name in the corpus is now
-    // either carried by the model, pending a module, or dropped by a decision
-    // with a reason. Nothing is unrepresentable.
-    expect(audit.unrepresented).toEqual([]);
+  it('loses exactly one thing the file contains, and names it', () => {
+    // Every element name in the corpus is carried by the model, pending a
+    // module, or dropped by a decision with a reason. Exactly one is a real
+    // loss: the expressive words this transcription encodes as dynamics. It
+    // sits here rather than in `ignored` because keeping it would need a
+    // domain concept the model does not have, not merely a reader.
+    expect(audit.unrepresented.map((entry) => entry.name)).toEqual(['other-dynamics']);
   });
 
-  it('still has work pending, and says which', () => {
-    expect(audit.pending).toContain('direction');
-    expect(audit.pending).toContain('barline');
-    expect(audit.pending).toContain('backup');
+  it('has no element name left waiting for a reader', () => {
+    // Every name this file contains now reaches one. That is a claim about
+    // vocabulary and not about fidelity: `unrepresented` above is what is read
+    // and still cannot be carried, and the per-element counting that would
+    // catch a reader dropping part of what it met is `ImportReport`'s, still
+    // to build (see section B, tier 1, in haydn-project.md).
+    expect(audit.pending).toEqual([]);
   });
 });
 
@@ -540,5 +554,479 @@ describe('the Haydn corpus, staff grouping and noteheads', () => {
 
     expect(hidden).toBe(14);
     expect(messages).toEqual([]);
+  });
+});
+
+describe('the Haydn corpus, assembled into staff contents', () => {
+  const built = (() => {
+    const result = PartwiseToTimewise.build(document);
+
+    if (!Result.isOk(result)) throw new Error(result.error.messages.join('; '));
+
+    return result.value;
+  })();
+
+  /** Every source `<note>`, split the way the walk has to split them */
+  const sourceNotes = (() => {
+    let rests = 0;
+    let chordMembers = 0;
+    let graces = 0;
+    let total = 0;
+
+    for (const measure of built.measures) {
+      for (const children of measure.contents) {
+        for (const note of children.filter((element) => element.name === 'note')) {
+          total += 1;
+
+          if (PitchReading.isRest(note)) rests += 1;
+          else if (PitchReading.isChordMember(note)) chordMembers += 1;
+          else if (PitchReading.isGrace(note)) graces += 1;
+        }
+      }
+    }
+
+    return { total, rests, chordMembers, graces };
+  })();
+
+  const walk = (() => {
+    const { warn, messages } = Reporting.collector();
+    const counts = { notes: 0, rests: 0, chords: 0, chordTones: 0, graces: 0, voices: 0 };
+    let failures = 0;
+    let disagreements = 0;
+    let short = 0;
+    let overfull = 0;
+    let time: TimeSignature | undefined;
+
+    for (const measure of built.measures) {
+      if (measure.time) time = measure.time;
+
+      const sums: Fraction[] = [];
+
+      measure.contents.forEach((children, partIndex) => {
+        const divisions = measure.divisions[partIndex];
+
+        if (divisions === undefined) throw new Error(`no divisions at measure ${measure.index}`);
+
+        const content = VoiceBuilding.staffContent(
+          children,
+          divisions,
+          `measure ${measure.index}, part ${partIndex}`,
+          warn,
+        );
+
+        if (!Result.isOk(content)) {
+          failures += 1;
+
+          return;
+        }
+
+        for (const voice of content.value.voices) {
+          counts.voices += 1;
+
+          let sum = Fraction.zero();
+
+          for (const element of voice.elements) {
+            if (Note.is(element)) {
+              counts.notes += 1;
+              counts.graces += element.graces?.length ?? 0;
+            } else if (Rest.is(element)) {
+              counts.rests += 1;
+            } else if (Chord.is(element)) {
+              counts.chords += 1;
+              counts.chordTones += element.tones.length;
+              counts.graces += element.graces?.length ?? 0;
+            }
+
+            if (!DynamicElement.is(element)) {
+              sum = Fraction.add(sum, Duration.fractionOfWhole(element.duration));
+            }
+          }
+
+          sums.push(sum);
+        }
+      });
+
+      if (sums.some((sum) => !Fraction.equals(sum, sums[0]))) disagreements += 1;
+
+      if (time && sums.length) {
+        const comparison = Fraction.compare(sums[0], TimeSignature.capacity(time));
+
+        if (comparison < 0) short += 1;
+        if (comparison > 0) overfull += 1;
+      }
+    }
+
+    return { counts, failures, disagreements, short, overfull, warnings: messages };
+  })();
+
+  it('builds every staff of every measure', () => {
+    expect(walk.failures).toBe(0);
+    // 531 measures x 4 parts, plus the 18 places a second voice appears
+    expect(walk.counts.voices).toBe(531 * 4 + 18);
+  });
+
+  it('accounts for every <note> in the file', () => {
+    // The walk's own accounting identity. A sounded note becomes either a
+    // `Note` or — when others sound with it — the leading tone of a `Chord`; a
+    // `<chord/>` member becomes a further tone of that same element; a grace
+    // becomes a decoration on its principal; and a rest stays a rest. Summing
+    // those back up must reproduce the file's note count exactly. A bare total
+    // would let a drop in one bar cancel a duplicate in another; this cannot,
+    // because each class is checked against its own source total.
+    expect(sourceNotes.total).toBe(10_593);
+
+    expect(walk.counts.notes + walk.counts.chords).toBe(
+      sourceNotes.total - sourceNotes.rests - sourceNotes.chordMembers - sourceNotes.graces,
+    );
+    expect(walk.counts.chordTones).toBe(sourceNotes.chordMembers + walk.counts.chords);
+    expect(walk.counts.graces).toBe(sourceNotes.graces);
+  });
+
+  it('synthesises exactly the rests the <forward> elements call for', () => {
+    // Every rest is either one the file wrote or one the extent rule added to
+    // fill a hole. There are 18 `<forward>`s; 14 of them open a gap that no
+    // written rest already covers.
+    expect(walk.counts.rests - sourceNotes.rests).toBe(14);
+  });
+
+  it('has every voice of every measure spanning the same duration', () => {
+    // The sharpest available check on <backup>/<forward> handling, and the one
+    // that needs no oracle: whatever the parts play, they must play it for the
+    // same length of time. A cursor error shows up here first.
+    expect(walk.disagreements).toBe(0);
+  });
+
+  it('fills its time signature everywhere except the 22 known partial measures', () => {
+    // The independent confirmation. `Measure.partial` was sized at 22 short
+    // measures by reading the source; the walk arrives at the same 22 from the
+    // other direction, and nothing is overfull.
+    expect(walk.short).toBe(22);
+    expect(walk.overfull).toBe(0);
+  });
+
+  it('raises exactly three kinds of warning across the whole work', () => {
+    // The walk's whole warning set by kind, so a new one surfaces here rather
+    // than joining a pile. Two are real losses (a grace note's slur, and the
+    // expressive text encoded as `<other-dynamics>`) and one is a modelling
+    // difference: a hairpin runs to the next dynamic rather than to its own end.
+    const kinds = new Map<string, number>();
+
+    for (const warning of walk.warnings) {
+      const kind = warning.includes("grace note's <slur>")
+        ? 'grace slur'
+        : warning.includes('other-dynamics')
+          ? 'expressive text'
+          : warning.includes('a wedge ends here')
+            ? 'wedge end'
+            : warning;
+
+      kinds.set(kind, (kinds.get(kind) ?? 0) + 1);
+    }
+
+    expect([...kinds].sort()).toEqual([
+      ['expressive text', 5],
+      ['grace slur', 1],
+      ['wedge end', 8],
+    ]);
+  });
+
+  it('places a dynamic on 406 of the directions the census counted', () => {
+    let dynamics = 0;
+
+    for (const measure of built.measures) {
+      for (const children of measure.contents) {
+        for (const direction of children.filter((child) => child.name === 'direction')) {
+          dynamics += DirectionReading.dynamics(direction, 'here', Reporting.ignore).length;
+        }
+      }
+    }
+
+    // 406 `<dynamics>` blocks hold 411 marks, because each of the five
+    // `<other-dynamics>` shares its block with a real one — " dolce" rides on a
+    // `p` four times and " sempre" on an `fz` once. So every block still yields
+    // exactly one loudness, and the word is the only thing lost. Plus the 8
+    // hairpin openings; the 8 closings have no element of their own.
+    expect(dynamics).toBe(406 + 8);
+  });
+});
+
+describe('the Haydn corpus, assembled into a Score', () => {
+  const assembled = (() => {
+    const result = ScoreAssembly.build(document);
+
+    if (!Result.isOk(result)) throw new Error(result.error.messages.join('; '));
+
+    return result.value;
+  })();
+
+  it('passes the domain’s own whole-score check', () => {
+    // The point of the exercise. `Score.check` validates staff alignment, part
+    // and group bounds, navigation targets, measure fullness, repeat pairing,
+    // volta endings, tie continuity and slur balance — all at once, on 531
+    // measures of real music, with no fixture anywhere in sight.
+    const checked = Score.check(assembled.score);
+
+    if (!Result.isOk(checked)) throw new Error(checked.error.messages.slice(0, 10).join('\n'));
+
+    expect(Result.isOk(checked)).toBe(true);
+  });
+
+  it('carries the work title and composer from the file', () => {
+    expect(assembled.score.title).toContain('76');
+    expect(assembled.score.composer).toContain('Haydn');
+  });
+
+  it('opens in C major, common time, on four bracketed staves', () => {
+    expect(assembled.score.key.tonic.letter).toBe('C');
+    expect(assembled.score.time.symbol).toBe('Common');
+    expect(assembled.score.staves.map((staff) => staff.clef)).toEqual([
+      'Treble',
+      'Treble',
+      'Alto',
+      'Bass',
+    ]);
+    expect(assembled.score.groups).toEqual([{ symbol: 'Bracket', from: 0, to: 3, barlines: true }]);
+  });
+
+  it('names the four parts with the sounds playback will need', () => {
+    expect(assembled.score.parts?.map((part) => part.name)).toEqual([
+      'Violin 1',
+      'Violin 2',
+      'Viola',
+      'Violoncello',
+    ]);
+    expect(assembled.score.parts?.map((part) => part.sound)).toEqual([
+      'strings.violin',
+      'strings.violin',
+      'strings.viola',
+      'strings.cello',
+    ]);
+  });
+
+  it('flags exactly the 22 partial measures and no others', () => {
+    const partial = assembled.score.measures
+      .map((measure, index) => (measure.partial ? index : undefined))
+      .filter((index) => index !== undefined);
+
+    expect(partial).toHaveLength(22);
+    // The pairs the domain documented: a section's pickup and its closing bar
+    expect(partial.slice(0, 6)).toEqual([0, 46, 127, 128, 148, 149]);
+  });
+
+  it('puts the cello’s tenor clef on the measure that changes to it', () => {
+    expect(assembled.score.measures[224].contents[3].clef).toBe('Tenor');
+    expect(assembled.score.measures[225].contents[3].clef).toBe('Bass');
+    // The initial clefs belong to the staves, not to measure 0
+    expect(assembled.score.measures[0].contents[3].clef).toBeUndefined();
+  });
+
+  it('records the key and time changes as measure changes, not score-wide', () => {
+    const keyed = assembled.score.measures
+      .map((measure, index) => (measure.key ? index : undefined))
+      .filter((index) => index !== undefined);
+
+    expect(keyed).toEqual([0, 128, 237, 341, 493]);
+  });
+});
+
+describe('the Haydn corpus, what assembly reports', () => {
+  const assembled = (() => {
+    const result = ScoreAssembly.build(document);
+
+    if (!Result.isOk(result)) throw new Error(result.error.messages.join('; '));
+
+    return result.value;
+  })();
+
+  it('accounts for every warning the whole import raises', () => {
+    // 43 warnings for 113,657 elements, each one a stated decision rather than
+    // a surprise. Grouping them is the point: a new kind shows up here as a new
+    // row instead of vanishing into a count.
+    const kinds = new Map<string, number>();
+
+    for (const warning of assembled.warnings) {
+      const kind = warning.includes('assuming Major')
+        ? 'key with no declared mode'
+        : warning.includes('mid-measure')
+          ? 'clef declared mid-measure'
+          : warning.includes("grace note's <slur>")
+            ? "grace note's slur"
+            : warning.includes('other-dynamics')
+              ? 'expressive text as a dynamic'
+              : warning.includes('a wedge ends here')
+                ? 'hairpin end'
+                : warning.includes('the tie')
+                  ? 'tie across a voice change'
+                  : warning.includes('nowhere to put')
+                    ? 'text with nowhere to go'
+                    : warning.includes('sits beside the heading')
+                      ? 'text beside a heading'
+                      : warning;
+
+      kinds.set(kind, (kinds.get(kind) ?? 0) + 1);
+    }
+
+    expect([...kinds].sort()).toEqual([
+      ['clef declared mid-measure', 1],
+      ['expressive text as a dynamic', 5],
+      ["grace note's slur", 1],
+      ['hairpin end', 8],
+      // Five key changes, each declared on all four parts
+      ['key with no declared mode', 20],
+      // "Poco adagio; cantabile" and "sempre piano", each next to a real heading
+      ['text beside a heading', 2],
+      // Three stray "♮" and the repeat-dependent "la seconda volta più presto"
+      ['text with nowhere to go', 4],
+      // Both ends of the one tie the source runs across a voice change
+      ['tie across a voice change', 2],
+    ]);
+  });
+
+  it('drops both ends of the tie the source runs across a voice change', () => {
+    // Measure 22 ends on a G4–B4 double stop in one voice with the G4 tied
+    // over; measure 23 splits the lines and the G4 continues in voice 2. Both
+    // ends are correct in the source and the pairing is simply unreachable for
+    // us, so both are cleared rather than one left dangling.
+    const ties = assembled.warnings.filter((warning) => warning.includes('the tie'));
+
+    expect(ties).toEqual([
+      'Measure 22: the tie begun on G4 is not continued by the element that follows it; dropping it',
+      'Measure 23: the tie ended on G4 was never begun in this voice; dropping it',
+    ]);
+  });
+});
+
+describe('the Haydn corpus, its structure and movements', () => {
+  const score = (() => {
+    const result = ScoreAssembly.build(document);
+
+    if (!Result.isOk(result)) throw new Error(result.error.messages.join('; '));
+
+    return result.value.score;
+  })();
+
+  const indicesWhere = (has: (measure: (typeof score.measures)[number]) => boolean | undefined) =>
+    score.measures
+      .map((measure, index) => (has(measure) ? index : undefined))
+      .filter((index) => index !== undefined);
+
+  it('reads every repeat as a matched pair of barlines', () => {
+    expect(indicesWhere((measure) => measure.opening === 'RepeatOpen')).toEqual([
+      48, 258, 295, 304,
+    ]);
+    expect(indicesWhere((measure) => measure.closing === 'RepeatClose')).toEqual([
+      46, 125, 257, 294, 303, 340, 412,
+    ]);
+  });
+
+  it('fills each volta across the measures it spans, not just its ends', () => {
+    // The source brackets measures 44-46 as the first ending and 47 as the
+    // second; `Measure.ending` says "this measure is in volta n", so the
+    // measures *between* the start and stop have to be filled in.
+    const inVolta = (measure: (typeof score.measures)[number], number: number) =>
+      measure.ending?.some((entry) => (entry as number) === number);
+
+    expect(indicesWhere((measure) => inVolta(measure, 1))).toEqual([
+      44, 45, 46, 123, 124, 125, 412,
+    ]);
+    expect(indicesWhere((measure) => inVolta(measure, 2))).toEqual([47, 126, 127, 413]);
+  });
+
+  it('reads the Menuetto’s da capo as al Fine, with the Fine it seeks', () => {
+    // Both are `<sound>` attributes rather than the prose beside them: a bare
+    // DaCapo would play to the end of the movement instead of stopping.
+    expect(score.measures[340].jump).toBe('DaCapoAlFine');
+    expect(score.measures[294].marks).toEqual(['Fine']);
+  });
+
+  it('synthesises a Capo at each movement start, which the source never writes', () => {
+    // Without these the Menuetto's da capo rewinds to the opening of movement I
+    expect(indicesWhere((measure) => measure.marks?.includes('Capo'))).toEqual([0, 128, 237, 341]);
+  });
+
+  it('finds the nine sections, breaking movements to a page and the rest to a system', () => {
+    expect(
+      score.measures.flatMap((measure, index) =>
+        measure.newSection ? [[index, measure.newSection.title, measure.newSection.break]] : [],
+      ),
+    ).toEqual([
+      [0, 'I.', 'Page'],
+      [128, 'II.', 'Page'],
+      [149, 'Var. I', 'System'],
+      [170, 'Var. II', 'System'],
+      [191, 'Var. III', 'System'],
+      [212, 'Var. IV', 'System'],
+      [237, 'III. Menuetto', 'Page'],
+      [295, 'Trio', 'System'],
+      [341, 'IV. Finale', 'Page'],
+    ]);
+  });
+
+  it('does not promote a stray glyph on an inner part to a heading', () => {
+    // The viola's "♮" at measure 19 lands on a measure the engraver broke a
+    // system at, which was enough to title a section until headings were
+    // required to sit on the top part.
+    expect(score.measures[19].newSection).toBeUndefined();
+    expect(score.measures[95].newSection).toBeUndefined();
+  });
+
+  it('prefers the printed tempo word, falling back to the sounded bpm', () => {
+    // "Allegro" is what a reader sees and playback resolves it to a bpm anyway;
+    // "Poco adagio; cantabile" names no marking we model, so measure 128 takes
+    // the <sound tempo="80"> instead.
+    expect(score.measures[0].tempo).toBe('Allegro');
+    expect(score.measures[237].tempo).toBe('Allegro');
+    expect(score.measures[341].tempo).toBe('Presto');
+    expect(score.measures[128].tempo).toEqual({ noteValue: 'Quarter', bpm: 80 });
+  });
+});
+
+describe('the Haydn corpus, verified against itself', () => {
+  it('passes every estimator, with nothing to report', () => {
+    // The reusable `--verify` mode run over the real work. Unlike the coverage
+    // audit, every one of these compares the built `Score` against the source
+    // file or against itself, so none of them can balance by construction.
+    const report = Verification.run(document);
+
+    if (!Result.isOk(report)) throw new Error(report.error.messages.join('; '));
+
+    const failed = report.value.checks.filter((check) => !check.passed);
+
+    expect(failed.map((check) => `${check.name}: ${check.failures.join('; ')}`)).toEqual([]);
+    expect(report.value.checks.map((check) => check.name)).toEqual([
+      'Score.check',
+      'per-measure element counts',
+      'per-measure pitch sequence',
+      'every voice of a measure spans the same time',
+      'determinism',
+      'a slice matches the same measures of the whole',
+      'no part plays below its instrument’s lowest string',
+      'rests are a minority of the elements',
+    ]);
+  });
+
+  it('accounts for every element of the file, and meets no unknown vocabulary', () => {
+    const report = ImportReport.build(document);
+
+    if (!Result.isOk(report)) throw new Error(report.error.messages.join('; '));
+
+    expect(report.value.elements).toBe(113_657);
+    expect(ImportReport.balances(report.value)).toBe(true);
+    expect([...report.value.unaccounted]).toEqual([]);
+
+    // The only real loss in the file, and it is one element name
+    expect([...report.value.unrepresented]).toEqual([['other-dynamics', 5]]);
+
+    // The histograms count occurrences, not names: all 10,593 notes are in the
+    // consumed column, and the 9,186 `<stem>` elements — fewer, since a rest
+    // has none — are in the ignored one, because stem direction is derived from
+    // staff position rather than imported.
+    expect(report.value.consumed.get('note')).toBe(10_593);
+    expect(report.value.ignored.get('stem')).toBe(9_186);
+
+    // Note the balance above proves the *partition*, not the import: it holds
+    // however badly a reader behaves, because it is computed from the element
+    // names rather than from what any reader touched. `Verification` is what
+    // compares the result against the source. See the module header.
   });
 });

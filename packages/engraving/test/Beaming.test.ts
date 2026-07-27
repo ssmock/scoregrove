@@ -149,6 +149,73 @@ describe('Beaming.geometry', () => {
     expect(secondary).toMatchObject({ x1: 4, x2: 6 });
   });
 
+  it('gives a lone sixteenth a stub pointing back at the note before it', () => {
+    // The dotted-eighth/sixteenth figure: without the stub the pair prints as
+    // two notes that look like eighths, which is the wrong rhythm on the page
+    // rather than a spacing quibble.
+    const { lines } = Beaming.geometry({
+      stems: [
+        { x: 2, noteY: 2, count: 1 },
+        { x: 8, noteY: 2, count: 2 },
+      ],
+      direction: StemDirection.Up,
+    });
+
+    const stub = lines.find((line) => line.level === 2)!;
+
+    expect(stub.x2).toBe(8);
+    expect(stub.x1).toBeCloseTo(8 - 1.25);
+  });
+
+  it('points a stub forward when the note that carries it opens the group', () => {
+    const { lines } = Beaming.geometry({
+      stems: [
+        { x: 2, noteY: 2, count: 2 },
+        { x: 8, noteY: 2, count: 1 },
+      ],
+      direction: StemDirection.Up,
+    });
+
+    const stub = lines.find((line) => line.level === 2)!;
+
+    expect(stub.x1).toBe(2);
+    expect(stub.x2).toBeCloseTo(2 + 1.25);
+  });
+
+  it('never lets a stub reach more than halfway to its neighbour', () => {
+    // Two facing stubs that met would read as a full beam, i.e. as a rhythm
+    // neither note has
+    const { lines } = Beaming.geometry({
+      stems: [
+        { x: 2, noteY: 2, count: 2 },
+        { x: 3, noteY: 2, count: 1 },
+        { x: 4, noteY: 2, count: 2 },
+      ],
+      direction: StemDirection.Up,
+    });
+
+    const stubs = lines.filter((line) => line.level === 2);
+
+    expect(stubs).toHaveLength(2);
+    expect(stubs[0]).toMatchObject({ x1: 2, x2: 2.5 });
+    expect(stubs[1]).toMatchObject({ x1: 3.5, x2: 4 });
+  });
+
+  it('slants a stub with the beam it hangs from', () => {
+    const { lines } = Beaming.geometry({
+      stems: [
+        { x: 2, noteY: 4, count: 1 },
+        { x: 8, noteY: 0, count: 2 },
+      ],
+      direction: StemDirection.Up,
+    });
+
+    const stub = lines.find((line) => line.level === 2)!;
+
+    // A sloping beam means the stub's own ends differ, following it
+    expect(stub.y1).not.toBeCloseTo(stub.y2);
+  });
+
   it('mirrors below for down-stem groups', () => {
     const { tips, lines } = Beaming.geometry({
       stems: [
