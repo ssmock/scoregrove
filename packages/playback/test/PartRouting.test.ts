@@ -1,10 +1,9 @@
 import { describe, expect, it } from 'vitest';
 import { Clef } from '@scoregrove/domain/Clef';
-import { Mode } from '@scoregrove/domain/KeySignature';
+import { KeySignature, Mode } from '@scoregrove/domain/KeySignature';
 import { NonEmptyArray } from '@scoregrove/domain/NonEmptyArray';
 import { NonEmptyString } from '@scoregrove/domain/NonEmptyString';
 import { Part } from '@scoregrove/domain/Part';
-import { PitchClass, PitchLetter } from '@scoregrove/domain/Pitch';
 import { PositiveInteger } from '@scoregrove/domain/PositiveInteger';
 import { Score } from '@scoregrove/domain/Score';
 import { Staff } from '@scoregrove/domain/Staff';
@@ -17,7 +16,7 @@ const scoreWith = (staves: Staff[], parts?: Part[]): Score =>
   Score.of({
     staves: NonEmptyArray.of(staves),
     ...(parts ? { parts: NonEmptyArray.of(parts) } : {}),
-    key: { tonic: PitchClass.of(PitchLetter.C), mode: Mode.Major },
+    key: KeySignature.of(0, Mode.Major),
     time: { beats: PositiveInteger.of(4), beatUnit: BeatUnit.Quarter },
     measures: NonEmptyArray.of([]),
   });

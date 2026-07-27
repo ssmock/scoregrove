@@ -170,6 +170,12 @@ silently becomes load-bearing. Each is also noted at its code site.
 
 ### Horizontal layout
 
+- A persisted score from before `KeySignature` became `{ fifths, mode? }` renders with **no key
+  signature at all** rather than failing: `Projects` does no schema validation on load (a
+  documented gap), so an old `{ tonic, mode }` entry in localStorage reads `fifths` as undefined
+  and every accidental prints explicitly. Regenerating the score fixes it; noticing you need to is
+  the problem.
+
 - Accidental state is per voice: two voices on one staff don't share carried accidentals, so a
   cancellation printed in one voice is neither suppressed nor restated in the other.
 - ~~A note tied across a barline restates its accidental.~~ **Fixed:** the tie carries the

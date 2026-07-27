@@ -1,13 +1,13 @@
 import { describe, expect, it } from 'vitest';
 import { Duration, NoteValue } from '@scoregrove/domain/Duration';
 import { DynamicMark } from '@scoregrove/domain/Dynamic';
-import { Mode, type KeySignature } from '@scoregrove/domain/KeySignature';
+import { Mode, KeySignature } from '@scoregrove/domain/KeySignature';
 import { Chord, DynamicElement, Note, Rest, TieRole } from '@scoregrove/domain/MeasureElement';
-import { Accidental, PitchClass, PitchLetter } from '@scoregrove/domain/Pitch';
+import { Accidental, PitchLetter } from '@scoregrove/domain/Pitch';
 import { Accidentals } from '../src/Accidentals';
 import { expectOk, pitch } from './helpers';
 
-const gMajor: KeySignature = { tonic: PitchClass.of(PitchLetter.G), mode: Mode.Major };
+const gMajor: KeySignature = KeySignature.of(1, Mode.Major);
 const quarter = Duration.of(NoteValue.Quarter);
 
 describe('Accidentals.resolve', () => {
@@ -67,7 +67,7 @@ describe('Accidentals.resolve', () => {
 });
 
 describe('Accidentals.resolve, across a tie', () => {
-  const cMajor: KeySignature = { tonic: PitchClass.of(PitchLetter.C), mode: Mode.Major };
+  const cMajor: KeySignature = KeySignature.of(0, Mode.Major);
 
   it('does not restate the accidental of a note tied over the barline', () => {
     // The measure opens with the far end of a tie begun in the previous one.

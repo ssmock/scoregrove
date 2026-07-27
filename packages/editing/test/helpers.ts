@@ -1,5 +1,5 @@
 import { expect } from 'vitest';
-import { Mode } from '@scoregrove/domain/KeySignature';
+import { KeySignature, Mode } from '@scoregrove/domain/KeySignature';
 import type { Measure } from '@scoregrove/domain/Measure';
 import { NonEmptyArray } from '@scoregrove/domain/NonEmptyArray';
 import { Octave, Pitch, PitchClass, PitchLetter, type Accidental } from '@scoregrove/domain/Pitch';
@@ -35,7 +35,7 @@ export function buildScore(args: {
 }): Score {
   return Score.of({
     staves: NonEmptyArray.of([...args.staves]),
-    key: { tonic: PitchClass.of(PitchLetter.C), mode: Mode.Major },
+    key: KeySignature.of(0, Mode.Major),
     time: args.time,
     measures: NonEmptyArray.of([...args.measures]),
   });

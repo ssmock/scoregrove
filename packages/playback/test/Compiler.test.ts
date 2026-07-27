@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { ClosingBarline, OpeningBarline } from '@scoregrove/domain/Barline';
 import { Clef } from '@scoregrove/domain/Clef';
 import { Duration, NoteValue } from '@scoregrove/domain/Duration';
-import { Mode } from '@scoregrove/domain/KeySignature';
+import { KeySignature, Mode } from '@scoregrove/domain/KeySignature';
 import { StaffContent, type Measure } from '@scoregrove/domain/Measure';
 import { DynamicMark } from '@scoregrove/domain/Dynamic';
 import { DynamicElement, Note, type MeasureElement } from '@scoregrove/domain/MeasureElement';
@@ -22,7 +22,7 @@ const note = (letter: PitchLetter, octave: number, duration: Duration): Note =>
 const quarter = Duration.of(NoteValue.Quarter);
 const half = Duration.of(NoteValue.Half);
 const whole = Duration.of(NoteValue.Whole);
-const cMajor = { tonic: PitchClass.of(PitchLetter.C), mode: Mode.Major };
+const cMajor = KeySignature.of(0, Mode.Major);
 const fourFour: TimeSignature = { beats: PositiveInteger.of(4), beatUnit: BeatUnit.Quarter };
 const mm120 = MetronomeMark.of(NoteValue.Quarter, PositiveInteger.of(120));
 

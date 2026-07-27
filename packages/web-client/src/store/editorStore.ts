@@ -2,11 +2,11 @@ import { reactive, readonly, watch, type DeepReadonly } from 'vue';
 import { Clef } from '@scoregrove/domain/Clef';
 import { Duration } from '@scoregrove/domain/Duration';
 import { Fraction } from '@scoregrove/domain/Fraction';
-import { Mode } from '@scoregrove/domain/KeySignature';
+import { KeySignature, Mode } from '@scoregrove/domain/KeySignature';
 import type { Articulation } from '@scoregrove/domain/Notations';
 import type { NonEmptyString } from '@scoregrove/domain/NonEmptyString';
 import { NonEmptyArray } from '@scoregrove/domain/NonEmptyArray';
-import { PitchClass, PitchLetter, type Pitch } from '@scoregrove/domain/Pitch';
+import { type Pitch } from '@scoregrove/domain/Pitch';
 import { Result } from '@scoregrove/domain/Result';
 import type { Score } from '@scoregrove/domain/Score';
 import { Staff } from '@scoregrove/domain/Staff';
@@ -90,7 +90,7 @@ const blankScore = (): Score => {
 
   return {
     staves,
-    key: { tonic: PitchClass.of(PitchLetter.C), mode: Mode.Major },
+    key: KeySignature.of(0, Mode.Major),
     time,
     measures: NonEmptyArray.of([RestBacking.emptyMeasure(time, staves)]),
   };

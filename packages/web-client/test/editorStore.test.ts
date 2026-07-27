@@ -3,7 +3,7 @@ import { nextTick } from 'vue';
 import { Clef } from '@scoregrove/domain/Clef';
 import { Duration, NoteValue } from '@scoregrove/domain/Duration';
 import { Fraction } from '@scoregrove/domain/Fraction';
-import { Mode } from '@scoregrove/domain/KeySignature';
+import { KeySignature, Mode } from '@scoregrove/domain/KeySignature';
 import { Articulation } from '@scoregrove/domain/Notations';
 import { NonEmptyArray } from '@scoregrove/domain/NonEmptyArray';
 import { NonEmptyString } from '@scoregrove/domain/NonEmptyString';
@@ -38,7 +38,7 @@ const sampleScore = (): Score => {
 
   return {
     staves,
-    key: { tonic: PitchClass.of(PitchLetter.C), mode: Mode.Major },
+    key: KeySignature.of(0, Mode.Major),
     time,
     measures: NonEmptyArray.of([RestBacking.emptyMeasure(time, staves)]),
   };

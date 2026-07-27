@@ -1,13 +1,19 @@
 import { describe, expect, it } from 'vitest';
 import { Clef } from '@scoregrove/domain/Clef';
-import { Mode, type KeySignature } from '@scoregrove/domain/KeySignature';
+import { Mode, KeySignature } from '@scoregrove/domain/KeySignature';
 import { Accidental, PitchClass, PitchLetter } from '@scoregrove/domain/Pitch';
 import { KeySignatureLayout } from '../src/KeySignatureLayout';
+import { Result } from '@scoregrove/domain/Result';
 
-const keyOf = (letter: PitchLetter, mode: Mode, accidental?: Accidental): KeySignature => ({
-  tonic: PitchClass.of(letter, accidental),
-  mode,
-});
+const keyOf = (letter: PitchLetter, mode: Mode, accidental?: Accidental): KeySignature => {
+  const signature = KeySignature.ofTonic(PitchClass.of(letter, accidental), mode);
+
+  // These are literals in fixtures and stories, so a failure is a typo in the
+  // file rather than bad data at runtime.
+  if (!Result.isOk(signature)) throw new Error(`${letter} ${mode} is not a standard key`);
+
+  return signature.value;
+};
 
 // Which letters a key alters (KeySignature.accidentals) is key theory, tested
 // in the domain's KeySignature suite; positions below are the layout part.

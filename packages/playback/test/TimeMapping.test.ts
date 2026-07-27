@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { Clef } from '@scoregrove/domain/Clef';
 import { Duration, NoteValue } from '@scoregrove/domain/Duration';
 import { Fraction } from '@scoregrove/domain/Fraction';
-import { Mode } from '@scoregrove/domain/KeySignature';
+import { KeySignature, Mode } from '@scoregrove/domain/KeySignature';
 import { StaffContent, type Measure } from '@scoregrove/domain/Measure';
 import { Note, TieRole, type MeasureElement } from '@scoregrove/domain/MeasureElement';
 import { NonEmptyArray } from '@scoregrove/domain/NonEmptyArray';
@@ -19,7 +19,7 @@ import { TimeMapping } from '../src/TimeMapping';
 const c4 = Pitch.of(PitchClass.of(PitchLetter.C), Octave.of(4));
 const quarter = Duration.of(NoteValue.Quarter);
 const whole = Duration.of(NoteValue.Whole);
-const cMajor = { tonic: PitchClass.of(PitchLetter.C), mode: Mode.Major };
+const cMajor = KeySignature.of(0, Mode.Major);
 const fourFour: TimeSignature = { beats: PositiveInteger.of(4), beatUnit: BeatUnit.Quarter };
 
 // ♩ = 120 → a quarter is 0.5s, a whole note 2s. ♩ = 240 → a whole note 1s.

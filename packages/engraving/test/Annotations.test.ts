@@ -2,11 +2,11 @@ import { describe, expect, it } from 'vitest';
 import { Clef } from '@scoregrove/domain/Clef';
 import { ClosingBarline, OpeningBarline } from '@scoregrove/domain/Barline';
 import { Duration, NoteValue } from '@scoregrove/domain/Duration';
-import { Mode } from '@scoregrove/domain/KeySignature';
+import { KeySignature, Mode } from '@scoregrove/domain/KeySignature';
 import { StaffContent, type Measure } from '@scoregrove/domain/Measure';
 import { Note, type MeasureElement } from '@scoregrove/domain/MeasureElement';
 import { NonEmptyArray } from '@scoregrove/domain/NonEmptyArray';
-import { PitchClass, PitchLetter } from '@scoregrove/domain/Pitch';
+import { PitchLetter } from '@scoregrove/domain/Pitch';
 import { PositiveInteger } from '@scoregrove/domain/PositiveInteger';
 import { Score } from '@scoregrove/domain/Score';
 import { Staff } from '@scoregrove/domain/Staff';
@@ -40,7 +40,7 @@ describe('Annotations', () => {
   it('joins tempo and swing on one line', () => {
     const score = Score.of({
       staves: NonEmptyArray.of([Staff.of(Clef.Treble)]),
-      key: { tonic: PitchClass.of(PitchLetter.C), mode: Mode.Major },
+      key: KeySignature.of(0, Mode.Major),
       time: { beats: PositiveInteger.of(4), beatUnit: BeatUnit.Quarter },
       tempo: 'Moderato',
       swing: Swing.MediumSwing,
@@ -61,7 +61,7 @@ describe('Annotations', () => {
   it('prints an exact metronome mark as its conventional text', () => {
     const score = Score.of({
       staves: NonEmptyArray.of([Staff.of(Clef.Treble)]),
-      key: { tonic: PitchClass.of(PitchLetter.C), mode: Mode.Major },
+      key: KeySignature.of(0, Mode.Major),
       time: { beats: PositiveInteger.of(4), beatUnit: BeatUnit.Quarter },
       tempo: MetronomeMark.of(NoteValue.Quarter, PositiveInteger.of(120)),
       measures: NonEmptyArray.of([
@@ -109,7 +109,7 @@ describe('Annotations', () => {
     };
     const score = Score.of({
       staves: NonEmptyArray.of([Staff.of(Clef.Treble)]),
-      key: { tonic: PitchClass.of(PitchLetter.C), mode: Mode.Major },
+      key: KeySignature.of(0, Mode.Major),
       time: { beats: PositiveInteger.of(4), beatUnit: BeatUnit.Quarter },
       measures: NonEmptyArray.of([measure]),
     });
@@ -138,7 +138,7 @@ describe('Change clefs', () => {
       NonEmptyArray.of([Note.of(pitch(PitchLetter.C, 4), Duration.of(NoteValue.Whole))]);
     const score = Score.of({
       staves: NonEmptyArray.of([Staff.of(Clef.Treble)]),
-      key: { tonic: PitchClass.of(PitchLetter.C), mode: Mode.Major },
+      key: KeySignature.of(0, Mode.Major),
       time: { beats: PositiveInteger.of(4), beatUnit: BeatUnit.Quarter },
       measures: NonEmptyArray.of([
         { contents: NonEmptyArray.of([StaffContent.singleVoice(note())]) },

@@ -76,23 +76,25 @@ export const AttributeReading = {
     }
 
     const modeText = XmlReading.textOf(element, 'mode');
-    let mode: Mode = Mode.Major;
 
-    if (modeText === undefined) {
-      warn(`A <key> of ${fifths} fifths declares no <mode>; assuming Major`);
-    } else if (modeText.toLowerCase() === 'minor') {
-      mode = Mode.Minor;
-    } else if (modeText.toLowerCase() !== 'major') {
-      warn(`Unsupported key mode "${modeText}"; assuming Major`);
-    }
+    // No `<mode>` is the ordinary case, not a defect: this corpus states
+    // `<fifths>` twenty times and `<mode>` never. `KeySignature` carries the
+    // count with the mode left unstated, so nothing has to be invented —
+    // which matters, because assuming Major labelled this work's C minor
+    // finale as E♭ major. Both are three flats, so it printed and sounded
+    // correctly and was wrong only where anyone looked at the name.
+    if (modeText === undefined) return KeySignature.create(fifths);
 
-    // Index 0 is the empty signature, 1–7 count sharps, 8–14 count flats.
-    const index = fifths >= 0 ? fifths : 7 - fifths;
-    const tonic = KeySignature.standardTonics(mode)[index];
+    const mode = modeText.toLowerCase();
 
-    if (!tonic) return Result.invalid(`No standard tonic for ${fifths} fifths in ${mode}`);
+    if (mode === 'minor') return KeySignature.create(fifths, Mode.Minor);
+    if (mode === 'major') return KeySignature.create(fifths, Mode.Major);
 
-    return KeySignature.create(tonic, mode);
+    // The church modes and `none` are real MusicXML values we have no member
+    // for. The signature is still exact, so keep it and lose only the name.
+    warn(`Unsupported key mode "${modeText}"; keeping the signature and dropping the mode`);
+
+    return KeySignature.create(fifths);
   },
 
   /** `<time>` → `TimeSignature`, honoring the common/cut symbols the corpus uses */

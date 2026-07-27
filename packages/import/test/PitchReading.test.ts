@@ -72,7 +72,7 @@ describe('PitchReading.pitch', () => {
   it('sounds a cancelling natural against the key it cancels', () => {
     // The behaviour the previous test protects, checked end to end: B in F
     // major sounds B-flat bare, and B-natural only with the explicit natural.
-    const fMajor: KeySignature = { tonic: PitchClass.of(PitchLetter.F), mode: Mode.Major };
+    const fMajor: KeySignature = KeySignature.of(-1, Mode.Major);
     const bare = expectPitch(pitchXml('B', 4));
     const cancelled = expectPitch(`${pitchXml('B', 4)}<accidental>natural</accidental>`);
 
@@ -82,7 +82,7 @@ describe('PitchReading.pitch', () => {
   it('keeps a redundant accidental, which both pipelines treat as an override', () => {
     // An F-sharp in G major: the key already sharpens it, so the explicit
     // sharp must neither double-sharpen it nor change what prints.
-    const gMajor: KeySignature = { tonic: PitchClass.of(PitchLetter.G), mode: Mode.Major };
+    const gMajor: KeySignature = KeySignature.of(1, Mode.Major);
     const explicit = expectPitch(`${pitchXml('F', 5, 1)}<accidental>sharp</accidental>`);
     const bare = expectPitch(pitchXml('F', 5));
 

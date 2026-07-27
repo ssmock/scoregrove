@@ -1,17 +1,14 @@
 import { describe, expect, it } from 'vitest';
-import { Mode, type KeySignature } from '@scoregrove/domain/KeySignature';
+import { Mode, KeySignature } from '@scoregrove/domain/KeySignature';
 import { Accidental, PitchClass, PitchLetter } from '@scoregrove/domain/Pitch';
 import { Result } from '@scoregrove/domain/Result';
 import { PitchStepping } from '../src/PitchStepping';
 import { expectInvalid, expectOk, pitch } from './helpers';
 
-const cMajor: KeySignature = { tonic: PitchClass.of(PitchLetter.C), mode: Mode.Major };
-const gMajor: KeySignature = { tonic: PitchClass.of(PitchLetter.G), mode: Mode.Major };
-const fMajor: KeySignature = { tonic: PitchClass.of(PitchLetter.F), mode: Mode.Major };
-const cFlatMajor: KeySignature = {
-  tonic: PitchClass.of(PitchLetter.C, Accidental.Flat),
-  mode: Mode.Major,
-};
+const cMajor: KeySignature = KeySignature.of(0, Mode.Major);
+const gMajor: KeySignature = KeySignature.of(1, Mode.Major);
+const fMajor: KeySignature = KeySignature.of(-1, Mode.Major);
+const cFlatMajor: KeySignature = KeySignature.of(-7, Mode.Major);
 
 describe('PitchStepping.spellPitchClass', () => {
   it('spells a black-key pitch class sharp going up, flat going down, in a plain key', () => {

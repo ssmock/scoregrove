@@ -42,10 +42,7 @@
     }
   ],
   "key": {
-    "tonic": {
-      "letter": "G"
-    },
-    "mode": "Major"
+    "fifths": 1
   },
   "time": {
     "beats": 2,
@@ -195,10 +192,7 @@
       "label": "0",
       "partial": true,
       "key": {
-        "tonic": {
-          "letter": "G"
-        },
-        "mode": "Major"
+        "fifths": 1
       },
       "time": {
         "beats": 2,

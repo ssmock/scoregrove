@@ -1,9 +1,8 @@
 import { beforeEach, describe, expect, it } from 'vitest';
 import { Clef } from '@scoregrove/domain/Clef';
-import { Mode } from '@scoregrove/domain/KeySignature';
+import { KeySignature, Mode } from '@scoregrove/domain/KeySignature';
 import { NonEmptyArray } from '@scoregrove/domain/NonEmptyArray';
 import { NonEmptyString } from '@scoregrove/domain/NonEmptyString';
-import { PitchClass, PitchLetter } from '@scoregrove/domain/Pitch';
 import type { Score } from '@scoregrove/domain/Score';
 import { Staff } from '@scoregrove/domain/Staff';
 import { TimeSignature } from '@scoregrove/domain/TimeSignature';
@@ -16,7 +15,7 @@ const sampleScore = (): Score => {
 
   return {
     staves,
-    key: { tonic: PitchClass.of(PitchLetter.C), mode: Mode.Major },
+    key: KeySignature.of(0, Mode.Major),
     time,
     measures: NonEmptyArray.of([RestBacking.emptyMeasure(time, staves)]),
   };

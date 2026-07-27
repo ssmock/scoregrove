@@ -21,7 +21,7 @@ const e4 = Pitch.of(PitchClass.of(PitchLetter.E), Octave.of(4));
 const quarter = Duration.of(NoteValue.Quarter);
 const half = Duration.of(NoteValue.Half);
 
-const key = expectOk(KeySignature.create(PitchClass.of(PitchLetter.C), Mode.Major));
+const key = KeySignature.of(0, Mode.Major);
 
 // One beat per measure keeps fullness trivial for tests that target other rules.
 const oneFour = expectOk(TimeSignature.create(1, BeatUnit.Quarter));

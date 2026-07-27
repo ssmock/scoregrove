@@ -2,7 +2,7 @@ import { ClosingBarline, OpeningBarline } from '@scoregrove/domain/Barline';
 import { Clef } from '@scoregrove/domain/Clef';
 import { DotCount, Duration, NoteValue, Tuplet } from '@scoregrove/domain/Duration';
 import { DynamicChange, DynamicMark } from '@scoregrove/domain/Dynamic';
-import type { KeySignature } from '@scoregrove/domain/KeySignature';
+import { KeySignature } from '@scoregrove/domain/KeySignature';
 import { Mode } from '@scoregrove/domain/KeySignature';
 import { StaffContent, Voice, type Measure } from '@scoregrove/domain/Measure';
 import {
@@ -53,10 +53,15 @@ const sing = (text: string, syllabic?: Syllabic) => ({
   lyrics: NonEmptyArray.of([lyric(text, syllabic)]),
 });
 
-const key = (letter: PitchLetter, mode: Mode, accidental?: Accidental): KeySignature => ({
-  tonic: PitchClass.of(letter, accidental),
-  mode,
-});
+const key = (letter: PitchLetter, mode: Mode, accidental?: Accidental): KeySignature => {
+  const signature = KeySignature.ofTonic(PitchClass.of(letter, accidental), mode);
+
+  // These are literals in fixtures and stories, so a failure is a typo in the
+  // file rather than bad data at runtime.
+  if (!Result.isOk(signature)) throw new Error(`${letter} ${mode} is not a standard key`);
+
+  return signature.value;
+};
 
 const fourFour: TimeSignature = {
   beats: PositiveInteger.of(4),

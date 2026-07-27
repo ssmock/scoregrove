@@ -722,6 +722,20 @@ bowing/technique directions (zero `<technical>` elements). Both are Beethoven-ti
 design reasoning for keeping arpeggio and tremolo out of a flat ornament list is preserved in
 review item 4 for when it becomes due.
 
+- [x] **A key signature is a fifths count, not a named key.** The corpus asked for this directly:
+      `<fifths>` is stated 20 times and `<mode>` never, so the importer had to invent a mode to
+      name a tonic at all — and named the C minor finale **E♭ major**. Both are three flats, so it
+      printed and sounded correctly and was wrong only where someone read the name. `KeySignature`
+      is now `{ fifths, mode? }`: `accidentals` derives from the count alone (which is _why_ the
+      mode can be optional — E♭ major and C minor are indistinguishable to it), `tonic` is derived
+      and undefined when the mode is unstated, and `format` says "3 flats" rather than picking a
+      key it does not know. The importer no longer guesses, which removed **20 of the 43 warnings**
+      the whole work used to raise.
+      **The blast radius was the interesting part.** 57 construction sites across 38 files, and
+      _nothing outside the domain read `tonic`_ — every pipeline only ever asked for
+      `accidentals` or `impliedAccidental`. The field every score was required to assert was
+      write-only in both pipelines, which is exactly the shape of a model carrying more than it
+      knows.
 - [ ] Whatever else the histogram puts above these.
 
 ### Phase 3 — Engraving

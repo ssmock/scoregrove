@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { Clef } from '@scoregrove/domain/Clef';
 import { DynamicChange, DynamicMark } from '@scoregrove/domain/Dynamic';
 import { Duration, NoteValue } from '@scoregrove/domain/Duration';
-import { Mode } from '@scoregrove/domain/KeySignature';
+import { KeySignature, Mode } from '@scoregrove/domain/KeySignature';
 import { StaffContent, type Measure } from '@scoregrove/domain/Measure';
 import { DynamicElement, Note, type MeasureElement } from '@scoregrove/domain/MeasureElement';
 import { NonEmptyArray } from '@scoregrove/domain/NonEmptyArray';
@@ -26,7 +26,7 @@ const scoreOf = (elements: MeasureElement[]): Score => {
 
   return Score.of({
     staves: NonEmptyArray.of([Staff.of(Clef.Treble)]),
-    key: { tonic: PitchClass.of(PitchLetter.C), mode: Mode.Major },
+    key: KeySignature.of(0, Mode.Major),
     time: { beats: PositiveInteger.of(4), beatUnit: BeatUnit.Quarter },
     measures: NonEmptyArray.of([measure]),
   });

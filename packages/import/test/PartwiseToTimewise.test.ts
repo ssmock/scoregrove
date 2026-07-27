@@ -121,7 +121,7 @@ describe('PartwiseToTimewise score-wide reconciliation', () => {
       ]),
     );
 
-    expect(built.measures[0].key).toEqual({ tonic: { letter: 'G' }, mode: 'Major' });
+    expect(built.measures[0].key).toEqual({ fifths: 1 });
     expect(built.measures[0].time?.beats).toBe(3);
     expect(built.warnings.filter((w) => w.includes('disagree'))).toHaveLength(0);
   });
@@ -137,7 +137,7 @@ describe('PartwiseToTimewise score-wide reconciliation', () => {
       ]),
     );
 
-    expect(built.measures[0].key).toEqual({ tonic: { letter: 'D' }, mode: 'Major' });
+    expect(built.measures[0].key).toEqual({ fifths: 2 });
     expect(built.warnings.filter((w) => w.includes('disagree'))).toHaveLength(0);
   });
 
@@ -153,7 +153,7 @@ describe('PartwiseToTimewise score-wide reconciliation', () => {
 
     expect(conflict).toContain('Violin');
     expect(conflict).toContain('Cello');
-    expect(built.measures[0].key).toEqual({ tonic: { letter: 'G' }, mode: 'Major' });
+    expect(built.measures[0].key).toEqual({ fifths: 1 });
   });
 
   it('tracks divisions per part rather than reconciling it', () => {
@@ -189,16 +189,16 @@ describe('PartwiseToTimewise score-wide reconciliation', () => {
     expect(built.measures[1].divisions).toEqual([24]);
   });
 
-  it('assumes Major and says so when a key declares no mode', () => {
+  it('carries a key with no mode without inventing one', () => {
+    // Three flats is E♭ major or C minor, and this file does not say. It used
+    // to assume Major and warn, which named the Haydn finale — in C minor —
+    // as E♭ major: right on the page, wrong in the model.
     const built = expectOk(
       score([{ id: 'P1', name: 'V', measures: [attributes(key(-3)) + note] }]),
     );
 
-    expect(built.warnings.some((w) => w.includes('assuming Major'))).toBe(true);
-    expect(built.measures[0].key).toEqual({
-      tonic: { letter: 'E', accidental: 'Flat' },
-      mode: 'Major',
-    });
+    expect(built.measures[0].key).toEqual({ fifths: -3 });
+    expect(built.warnings.some((w) => w.includes('mode'))).toBe(false);
   });
 
   it('keeps the common and cut time symbols', () => {

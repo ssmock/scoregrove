@@ -143,7 +143,12 @@ describe('the Haydn corpus, transposed to timewise', () => {
     const keyed = built.measures.filter((measure) => measure.key);
 
     expect(keyed.map((measure) => measure.index)).toEqual([0, 128, 237, 341, 493]);
-    expect(keyed.map((measure) => measure.key!.tonic.letter)).toEqual(['C', 'G', 'C', 'E', 'C']);
+
+    // What the file actually says: counts, and no mode anywhere. It used to
+    // read ['C', 'G', 'C', 'E', 'C'] because the importer had to invent a mode
+    // to name a tonic at all — which made the C minor finale E♭ major.
+    expect(keyed.map((measure) => measure.key!.fifths)).toEqual([0, 1, 0, -3, 0]);
+    expect(keyed.every((measure) => measure.key!.mode === undefined)).toBe(true);
   });
 
   it('reconciles the time changes to the indices the census found', () => {
@@ -178,18 +183,13 @@ describe('the Haydn corpus, transposed to timewise', () => {
     expect(built.measures[530].divisions).toEqual([24, 24, 24, 24]);
   });
 
-  it('warns only about the mode assumption and the one mid-measure clef', () => {
+  it('warns only about the one mid-measure clef', () => {
     // The whole warning set, so anything new shows up here rather than being
-    // lost in a pile — five key changes with no <mode>, and the cello's clef.
-    const kinds = new Set(
-      built.warnings.map((warning) =>
-        warning.includes('assuming Major') ? 'mode assumed' : warning,
-      ),
-    );
-
-    expect([...kinds].sort()).toEqual([
+    // lost in a pile. The twenty "assuming Major" warnings that used to
+    // dominate it are gone: a key with no mode is now something the model can
+    // hold rather than something the importer has to guess at.
+    expect([...new Set(built.warnings)].sort()).toEqual([
       'Violoncello, measure index 225: <attributes> appears mid-measure; applying it at the measure start',
-      'mode assumed',
     ]);
   });
 });
@@ -777,7 +777,7 @@ describe('the Haydn corpus, assembled into a Score', () => {
   });
 
   it('opens in C major, common time, on four bracketed staves', () => {
-    expect(assembled.score.key.tonic.letter).toBe('C');
+    expect(assembled.score.key.fifths).toBe(0);
     expect(assembled.score.time.symbol).toBe('Common');
     expect(assembled.score.staves.map((staff) => staff.clef)).toEqual([
       'Treble',
@@ -839,29 +839,27 @@ describe('the Haydn corpus, what assembly reports', () => {
   })();
 
   it('accounts for every warning the whole import raises', () => {
-    // 43 warnings for 113,657 elements, each one a stated decision rather than
+    // 23 warnings for 113,657 elements, each one a stated decision rather than
     // a surprise. Grouping them is the point: a new kind shows up here as a new
     // row instead of vanishing into a count.
     const kinds = new Map<string, number>();
 
     for (const warning of assembled.warnings) {
-      const kind = warning.includes('assuming Major')
-        ? 'key with no declared mode'
-        : warning.includes('mid-measure')
-          ? 'clef declared mid-measure'
-          : warning.includes("grace note's <slur>")
-            ? "grace note's slur"
-            : warning.includes('other-dynamics')
-              ? 'expressive text as a dynamic'
-              : warning.includes('a wedge ends here')
-                ? 'hairpin end'
-                : warning.includes('the tie')
-                  ? 'tie across a voice change'
-                  : warning.includes('nowhere to put')
-                    ? 'text with nowhere to go'
-                    : warning.includes('sits beside the heading')
-                      ? 'text beside a heading'
-                      : warning;
+      const kind = warning.includes('mid-measure')
+        ? 'clef declared mid-measure'
+        : warning.includes("grace note's <slur>")
+          ? "grace note's slur"
+          : warning.includes('other-dynamics')
+            ? 'expressive text as a dynamic'
+            : warning.includes('a wedge ends here')
+              ? 'hairpin end'
+              : warning.includes('the tie')
+                ? 'tie across a voice change'
+                : warning.includes('nowhere to put')
+                  ? 'text with nowhere to go'
+                  : warning.includes('sits beside the heading')
+                    ? 'text beside a heading'
+                    : warning;
 
       kinds.set(kind, (kinds.get(kind) ?? 0) + 1);
     }
@@ -871,8 +869,6 @@ describe('the Haydn corpus, what assembly reports', () => {
       ['expressive text as a dynamic', 5],
       ["grace note's slur", 1],
       ['hairpin end', 8],
-      // Five key changes, each declared on all four parts
-      ['key with no declared mode', 20],
       // "Poco adagio; cantabile" and "sempre piano", each next to a real heading
       ['text beside a heading', 2],
       // Three stray "♮" and the repeat-dependent "la seconda volta più presto"

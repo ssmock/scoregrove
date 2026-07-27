@@ -1,7 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { Clef } from '@scoregrove/domain/Clef';
-import { Mode, type KeySignature } from '@scoregrove/domain/KeySignature';
-import { PitchClass, PitchLetter } from '@scoregrove/domain/Pitch';
+import { Mode, KeySignature } from '@scoregrove/domain/KeySignature';
 import { PositiveInteger } from '@scoregrove/domain/PositiveInteger';
 import { BeatUnit, TimeSignature } from '@scoregrove/domain/TimeSignature';
 import { Signatures } from '../src/Signatures';
@@ -17,7 +16,7 @@ describe('Signatures.clef', () => {
 });
 
 describe('Signatures.key', () => {
-  const dMajor: KeySignature = { tonic: PitchClass.of(PitchLetter.D), mode: Mode.Major };
+  const dMajor: KeySignature = KeySignature.of(2, Mode.Major);
 
   it('advances the accidentals left to right at their staff positions', () => {
     const run = Signatures.key(Clef.Treble, dMajor);
@@ -30,9 +29,10 @@ describe('Signatures.key', () => {
   });
 
   it('is empty for C major', () => {
-    expect(
-      Signatures.key(Clef.Treble, { tonic: PitchClass.of(PitchLetter.C), mode: Mode.Major }),
-    ).toEqual({ glyphs: [], width: 0 });
+    expect(Signatures.key(Clef.Treble, KeySignature.of(0, Mode.Major))).toEqual({
+      glyphs: [],
+      width: 0,
+    });
   });
 });
 

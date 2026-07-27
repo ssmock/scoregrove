@@ -81,12 +81,29 @@ const flatOrder: readonly PitchLetter[] = [
 ];
 
 /**
- * A key signature named by its tonic and mode (e.g. B♭ Major). Only the
- * standard circle-of-fifths signatures are permitted.
+ * A key signature: how many sharps or flats it carries, and what the music
+ * calls that — **when the source said**.
+ *
+ * ## Why fifths rather than a tonic
+ *
+ * A signature of three flats is E♭ major *or* C minor, and nothing about the
+ * signature itself distinguishes them: the printed accidentals, the pitches
+ * they imply, and everything both pipelines derive depend only on the count.
+ * Naming it by a tonic therefore has to invent a mode, and MusicXML routinely
+ * declines to supply one — the Haydn corpus states `<fifths>` 20 times and
+ * `<mode>` never, so its finale, which is in C minor, arrived labelled E♭
+ * major. Harmless on the page, wrong in the model, and a lie the importer was
+ * forced to tell because the type had nowhere to put "unstated".
+ *
+ * So the signature is the fifths, and the mode is optional naming on top of
+ * it. `tonic` becomes something you *derive* when the mode is known, rather
+ * than something every score must assert.
  */
 export type KeySignature = {
-  tonic: PitchClass;
-  mode: Mode;
+  /** Sharps when positive, flats when negative, −7 to 7 */
+  fifths: number;
+  /** What the music calls this signature, when it says; a signature alone does not know */
+  mode?: Mode;
 };
 
 /**
@@ -99,7 +116,13 @@ export type KeyAccidentals = {
   letters: readonly PitchLetter[];
 };
 
+/** The circle-of-fifths position a signature's tonic sits at: 0 empty, 1–7 sharps, 8–14 flats */
+const tonicIndex = (fifths: number): number => (fifths >= 0 ? fifths : 7 - fifths);
+
 export const KeySignature = {
+  /** The commonest signature, and the one an untold score starts in */
+  cMajor: { fifths: 0, mode: Mode.Major } as KeySignature,
+
   /**
    * The tonics that form standard key signatures for the given mode
    */
@@ -107,26 +130,62 @@ export const KeySignature = {
     return mode === Mode.Major ? majorTonics : minorTonics;
   },
 
-  /**
-   * Which letters the key signature alters and with which symbol; undefined
-   * for the empty signature (C major / A minor). Derived from the tonic's
-   * place in the circle-of-fifths ordering: index 0 is empty, 1–7 are sharp
-   * counts, 8–14 are flat counts. This is key theory (what a signature *is*),
-   * so it lives here rather than in the renderer — engraving reads it for
-   * printed positions, editing/playback for how a bare letter sounds.
-   */
-  accidentals(key: KeySignature): KeyAccidentals | undefined {
-    const index = KeySignature.standardTonics(key.mode).findIndex((tonic) =>
-      PitchClass.equals(tonic, key.tonic),
-    );
+  /** A signature from a known-good fifths count; `create` validates arbitrary input */
+  of(fifths: number, mode?: Mode): KeySignature {
+    return mode ? { fifths, mode } : { fifths };
+  },
 
-    if (index <= 0) return undefined;
-
-    if (index <= 7) {
-      return { accidental: Accidental.Sharp, letters: sharpOrder.slice(0, index) };
+  create(fifths: number, mode?: Mode): Result<KeySignature> {
+    if (!Number.isInteger(fifths) || Math.abs(fifths) > 7) {
+      return Result.invalid(`A key signature carries 0 to 7 sharps or flats, not ${fifths}`);
     }
 
-    return { accidental: Accidental.Flat, letters: flatOrder.slice(0, index - 7) };
+    return Result.ok(KeySignature.of(fifths, mode));
+  },
+
+  /** The signature a named key carries, for music that thinks in key names rather than counts */
+  ofTonic(tonic: PitchClass, mode: Mode): Result<KeySignature> {
+    const index = KeySignature.standardTonics(mode).findIndex((standard) =>
+      PitchClass.equals(standard, tonic),
+    );
+
+    if (index < 0) {
+      return Result.invalid(
+        `"${PitchClass.format(tonic)} ${mode}" is not a standard key signature`,
+      );
+    }
+
+    return Result.ok(KeySignature.of(index <= 7 ? index : 7 - index, mode));
+  },
+
+  /**
+   * The tonic this signature names, or undefined when the mode is unstated —
+   * three flats is E♭ major or C minor, and without a mode there is no answer
+   * to give rather than a default to pick.
+   */
+  tonic(key: KeySignature): PitchClass | undefined {
+    return key.mode ? KeySignature.standardTonics(key.mode)[tonicIndex(key.fifths)] : undefined;
+  },
+
+  /**
+   * Which letters the key signature alters and with which symbol; undefined
+   * for the empty signature. Derived from the fifths count alone, which is
+   * what makes the mode optional: E♭ major and C minor print and sound
+   * identically because this function cannot tell them apart. Key theory
+   * (what a signature *is*), so it lives here rather than in the renderer —
+   * engraving reads it for printed positions, editing/playback for how a bare
+   * letter sounds.
+   */
+  accidentals(key: KeySignature): KeyAccidentals | undefined {
+    if (key.fifths > 0) {
+      return { accidental: Accidental.Sharp, letters: sharpOrder.slice(0, key.fifths) };
+    }
+
+    if (key.fifths < 0) {
+      return { accidental: Accidental.Flat, letters: flatOrder.slice(0, -key.fifths) };
+    }
+
+    return undefined;
   },
 
   /** The accidental the key implies for `letter` (so a bare letter sounds correctly), or undefined if the key leaves it natural */
@@ -136,25 +195,23 @@ export const KeySignature = {
     return accidentals?.letters.includes(letter) ? accidentals.accidental : undefined;
   },
 
-  create(tonic: PitchClass, mode: Mode): Result<KeySignature> {
-    const isStandard = KeySignature.standardTonics(mode).some((standard) =>
-      PitchClass.equals(standard, tonic),
-    );
-
-    if (!isStandard) {
-      return Result.invalid(
-        `"${PitchClass.format(tonic)} ${mode}" is not a standard key signature`,
-      );
-    }
-
-    return Result.ok({ tonic, mode });
-  },
-
   equals(a: KeySignature, b: KeySignature): boolean {
-    return a.mode === b.mode && PitchClass.equals(a.tonic, b.tonic);
+    return a.fifths === b.fifths && a.mode === b.mode;
   },
 
+  /**
+   * A named key where the mode is known, and a plain count where it is not —
+   * "three flats" being exactly as much as such a signature says.
+   */
   format(key: KeySignature): string {
-    return `${PitchClass.format(key.tonic)} ${key.mode}`;
+    const tonic = KeySignature.tonic(key);
+
+    if (tonic && key.mode) return `${PitchClass.format(tonic)} ${key.mode}`;
+
+    if (key.fifths === 0) return 'no sharps or flats';
+
+    const count = Math.abs(key.fifths);
+
+    return `${count} ${key.fifths > 0 ? 'sharp' : 'flat'}${count === 1 ? '' : 's'}`;
   },
 };

@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { Clef } from '@scoregrove/domain/Clef';
 import { Duration, NoteValue } from '@scoregrove/domain/Duration';
-import { Mode, type KeySignature } from '@scoregrove/domain/KeySignature';
+import { KeySignature, Mode } from '@scoregrove/domain/KeySignature';
 import { StaffContent, type Measure } from '@scoregrove/domain/Measure';
 import { Chord, Note, Rest, TieRole, type MeasureElement } from '@scoregrove/domain/MeasureElement';
 import { NonEmptyArray } from '@scoregrove/domain/NonEmptyArray';
@@ -20,8 +20,8 @@ const pitch = (letter: PitchLetter, octave: number): Pitch =>
 const quarter = Duration.of(NoteValue.Quarter);
 const half = Duration.of(NoteValue.Half);
 const whole = Duration.of(NoteValue.Whole);
-const cMajor: KeySignature = { tonic: PitchClass.of(PitchLetter.C), mode: Mode.Major };
-const gMajor: KeySignature = { tonic: PitchClass.of(PitchLetter.G), mode: Mode.Major };
+const cMajor: KeySignature = KeySignature.of(0, Mode.Major);
+const gMajor: KeySignature = KeySignature.of(1, Mode.Major);
 const fourFour: TimeSignature = { beats: PositiveInteger.of(4), beatUnit: BeatUnit.Quarter };
 
 const measureOf = (elements: MeasureElement[], nav: Partial<Measure> = {}): Measure => ({

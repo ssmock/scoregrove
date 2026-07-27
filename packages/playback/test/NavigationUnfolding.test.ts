@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { ClosingBarline, OpeningBarline } from '@scoregrove/domain/Barline';
 import { Clef } from '@scoregrove/domain/Clef';
 import { Duration, NoteValue } from '@scoregrove/domain/Duration';
-import { Mode } from '@scoregrove/domain/KeySignature';
+import { KeySignature, Mode } from '@scoregrove/domain/KeySignature';
 import { StaffContent, type Measure } from '@scoregrove/domain/Measure';
 import { Note } from '@scoregrove/domain/MeasureElement';
 import { NavigationJump, NavigationMark } from '@scoregrove/domain/Navigation';
@@ -26,7 +26,7 @@ const measure = (nav: Partial<Measure> = {}): Measure => ({
 const scoreOf = (measures: Measure[]): Score =>
   Score.of({
     staves: NonEmptyArray.of([Staff.of(Clef.Treble)]),
-    key: { tonic: PitchClass.of(PitchLetter.C), mode: Mode.Major },
+    key: KeySignature.of(0, Mode.Major),
     time: { beats: PositiveInteger.of(4), beatUnit: BeatUnit.Quarter },
     measures: NonEmptyArray.of(measures),
   });
