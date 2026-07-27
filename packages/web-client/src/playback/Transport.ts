@@ -1,8 +1,10 @@
 import type { Performance } from '@scoregrove/playback/Compiler';
 import { PitchSounding } from '@scoregrove/playback/PitchSounding';
 import type { NoteEvent } from '@scoregrove/playback/TimeMapping';
+import { createEnsemble, type Ensemble, type EnsembleDeps } from './Ensemble';
 import { createOscillatorInstrument } from './OscillatorInstrument';
 import type { Instrument } from './Instrument';
+import { Timbres } from './Timbres';
 
 /**
  * Drives a compiled `Performance` to an instrument in real time, using the
@@ -193,6 +195,9 @@ export const createTransport = (deps: TransportDeps): Transport => {
           startTime: Math.max(audioStart, deps.now()),
           durationSeconds: event.durationSeconds,
           velocity: event.velocity,
+          // The only notation the instrument seam sees, and only so an
+          // `Ensemble` can route it to the right player.
+          staff: event.address.staff,
         });
 
         cursor += 1;
@@ -239,16 +244,27 @@ export const createTransport = (deps: TransportDeps): Transport => {
 
 /**
  * The browser wiring: a transport backed by a real `AudioContext` and an
- * oscillator synth, ticking on a 25 ms interval. The caller owns the context's
- * lifetime (and should `close()` it when done). Resume happens on `play`, which
- * a user gesture must trigger, per the autoplay policy.
+ * ensemble of oscillator synths, ticking on a 25 ms interval. The caller owns
+ * the context's lifetime (and should `close()` it when done). Resume happens on
+ * `play`, which a user gesture must trigger, per the autoplay policy.
+ *
+ * The ensemble is returned alongside the transport because mute and solo are
+ * its to answer, not the transport's — the transport schedules everything and
+ * the ensemble decides what reaches an audio graph.
  */
 export const createBrowserTransport = (
   context: AudioContext,
-  extras: Pick<TransportDeps, 'onPosition'> = {},
-): Transport =>
-  createTransport({
-    instrument: createOscillatorInstrument(context),
+  extras: Pick<TransportDeps, 'onPosition'> & { routing?: EnsembleDeps['routing'] } = {},
+): Transport & { ensemble: Ensemble } => {
+  const { routing, ...transportExtras } = extras;
+
+  const ensemble = createEnsemble({
+    routing: routing ?? (() => ({ partOfStaff: [], parts: [] })),
+    createInstrument: (part) => createOscillatorInstrument(context, Timbres.forSound(part.sound)),
+  });
+
+  const transport = createTransport({
+    instrument: ensemble,
     now: () => context.currentTime,
     resume: () => void context.resume(),
     startTimer: (tick) => {
@@ -256,5 +272,8 @@ export const createBrowserTransport = (
 
       return () => clearInterval(handle);
     },
-    ...extras,
+    ...transportExtras,
   });
+
+  return { ...transport, ensemble };
+};

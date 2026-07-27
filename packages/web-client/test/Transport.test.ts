@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import type { Performance } from '@scoregrove/playback/Compiler';
 import type { NoteEvent } from '@scoregrove/playback/TimeMapping';
-import type { Voice } from '../src/playback/Instrument';
+import type { Tone } from '../src/playback/Instrument';
 import { createTransport, type Transport, type TransportDeps } from '../src/playback/Transport';
 
 const event = (startSeconds: number, pitchNumber: number, durationSeconds = 0.5): NoteEvent => ({
@@ -21,7 +21,7 @@ const performanceOf = (events: NoteEvent[]): Performance => ({
 /** A test rig: a controllable clock, a recording instrument, and a manual timer. */
 const rig = (overrides: Partial<TransportDeps> = {}) => {
   let clock = 0;
-  const scheduled: Voice[] = [];
+  const scheduled: Tone[] = [];
   let stopAllCount = 0;
 
   const deps: TransportDeps = {

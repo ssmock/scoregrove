@@ -819,9 +819,30 @@ repeats, and tempo; dynamics and articulation audibly distinct; ornaments realiz
 synthetic — sampled instruments and true bowed legato are explicitly a later project, not part of
 calling this piece done.
 
-- [ ] Per-part instruments behind the existing `Instrument` interface — the seam is already there
-      and documented for exactly this ("a sampled or SoundFont instrument could replace it behind
-      this same interface"). Four bowed-string voices, however approximate, beat four sine waves.
+- [x] **Per-part instruments behind the existing `Instrument` interface.** The seam took a whole
+      quartet as readily as the sampled instrument it was documented for. **No pipeline change was
+      needed**: every `NoteEvent` already carries `address.staff`, so the routing key existed all
+      along and this was wiring in `web-client`, not a change to the domain or the compiler.
+      Four decisions worth recording. **Route by part, not staff** (`PartRouting`): identical for
+      this quartet, and wrong at the first piano score, where one player owns two staves and would
+      be handed two instruments playing over each other. **An `Ensemble` behind the single seam**
+      rather than an array in the transport, which calls `stopAll` from five places — every one
+      would have become a fan-out, and the scheduler would have gained a concern it does not need.
+      **Players are built lazily and shared by sound**, so the two violins get one audio graph; safe
+      only because mute is decided _before_ routing, so a silenced part never reaches an instrument.
+      **Routing is read per tone rather than captured**, so editing the parts reaches playback
+      without rebuilding the transport and losing its position.
+      The scheduled type was called `Voice`, which already meant a line within a staff _and_ one of
+      the four players; it is now `Tone`. Timbre is a sawtooth through a per-instrument lowpass —
+      the cutoff falling with the instrument's range is what makes a cello read as darker rather
+      than merely lower.
+- [x] **Per-part mute/solo** — pulled forward from Phase 5 deliberately, because **timbre cannot
+      separate the two violins**: they share an instrument sound, correctly, and the ear follows
+      the line rather than the colour. Muting the other three is what actually answers "is this
+      part wrong?". It lives on the `Ensemble` because a muted part must be a note that is never
+      scheduled — anywhere else means either teaching the scheduler about parts or cancelling notes
+      after they have begun. Solo overrides mute as on any mixer, and clearing the solo restores
+      the mutes rather than forgetting them.
 - [ ] String-appropriate envelope — the current ADSR is a plucked/keyed shape; bowed attack and
       release are different enough to matter.
 - [ ] Articulation shaping of duration and velocity (staccato shortens, tenuto sustains, accent
@@ -837,7 +858,9 @@ calling this piece done.
 
 - [ ] Load the imported quartet in the app and read it: multi-page scrolling, four-staff systems,
       print layout.
-- [ ] Per-part mute/solo — the fastest way to hear whether one part is wrong.
+- [x] **Per-part mute/solo** — done early, alongside the per-part instruments; see Phase 4. The
+      store carries the flags so the UI can show them, but the decision is the ensemble's. **No UI
+      control yet** — the actions exist and are tested, the buttons do not.
 - [ ] Storybook stories driven by the imported score, not just the invented fixtures.
 
 ---

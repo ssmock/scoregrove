@@ -1,34 +1,46 @@
-import type { Instrument, Voice } from './Instrument';
+import type { Instrument, Tone } from './Instrument';
+import { defaultTimbre, type Timbre } from './Timbres';
 
 /**
- * The v1 sound source: a plain sine oscillator per voice through a short ADSR
- * gain envelope into a shared master gain. Zero assets, deterministic, and
- * easy to swap for a sampled instrument later behind the `Instrument` seam. A
- * sine keeps the timbre clean and midrange rather than buzzy; the master gain
- * leaves headroom so stacked chord tones don't clip.
+ * The v1 sound source: one oscillator per tone through a short gain envelope,
+ * into a lowpass filter and a master gain. Zero assets, deterministic, and easy
+ * to swap for a sampled instrument later behind the `Instrument` seam.
+ *
+ * The filter is what makes several of these sound like different instruments
+ * rather than the same one at different pitches: a sawtooth is rich enough to
+ * shape, and the cutoff is the shaping. One filter for the whole instrument
+ * rather than one per tone — the timbre is a property of the player, and a
+ * node per note would be wasteful for no audible gain.
  */
 
 const options = {
-  /** Master level, well below unity so several simultaneous voices don't clip */
-  masterGain: 0.25,
   /** Envelope shape, in seconds — a quick attack and a short release tail */
   attack: 0.006,
   release: 0.06,
 };
 
-type ActiveVoice = { oscillator: OscillatorNode; gain: GainNode };
+type ActiveTone = { oscillator: OscillatorNode; gain: GainNode };
 
-export const createOscillatorInstrument = (context: AudioContext): Instrument => {
+export const createOscillatorInstrument = (
+  context: AudioContext,
+  timbre: Timbre = defaultTimbre,
+): Instrument => {
   const master = context.createGain();
-  master.gain.value = options.masterGain;
-  master.connect(context.destination);
+  master.gain.value = timbre.gain;
 
-  const active = new Set<ActiveVoice>();
+  const filter = context.createBiquadFilter();
+  filter.type = 'lowpass';
+  filter.frequency.value = timbre.cutoffHz;
+
+  master.connect(filter);
+  filter.connect(context.destination);
+
+  const active = new Set<ActiveTone>();
 
   return {
-    schedule({ frequency, startTime, durationSeconds, velocity }: Voice): void {
+    schedule({ frequency, startTime, durationSeconds, velocity }: Tone): void {
       const oscillator = context.createOscillator();
-      oscillator.type = 'sine';
+      oscillator.type = timbre.wave;
       oscillator.frequency.setValueAtTime(frequency, startTime);
 
       const gain = context.createGain();
@@ -49,11 +61,11 @@ export const createOscillatorInstrument = (context: AudioContext): Instrument =>
       oscillator.start(startTime);
       oscillator.stop(end);
 
-      const voice: ActiveVoice = { oscillator, gain };
-      active.add(voice);
+      const tone: ActiveTone = { oscillator, gain };
+      active.add(tone);
 
       oscillator.onended = (): void => {
-        active.delete(voice);
+        active.delete(tone);
         oscillator.disconnect();
         gain.disconnect();
       };

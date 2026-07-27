@@ -25,11 +25,13 @@ import { TimeSignatureOps } from '@scoregrove/editing/TimeSignatureOps';
 import { UndoStack } from '@scoregrove/editing/UndoStack';
 import type { ScoreAddress } from '@scoregrove/engraving/LayoutTree';
 import { Compiler, type Performance } from '@scoregrove/playback/Compiler';
+import type { Ensemble } from '../playback/Ensemble';
 import {
   createBrowserTransport,
   type Transport,
   type TransportStatus,
 } from '../playback/Transport';
+import { PartRouting } from '@scoregrove/playback/PartRouting';
 import { Projects } from './Projects';
 
 /**
@@ -145,6 +147,10 @@ type EditorState = {
     loopEndMeasure: number | null;
     /** Addresses of the notes/chords sounding right now, for the on-staff playhead highlight */
     sounding: readonly ScoreAddress[];
+    /** Parts silenced by the listener; ignored while anything is soloed */
+    mutedParts: readonly number[];
+    /** Parts the listener has isolated; non-empty means only these sound */
+    soloedParts: readonly number[];
   };
 };
 
@@ -194,12 +200,20 @@ export function createEditorStore(initial: Score = blankScore(), deps: EditorSto
       loopStartMeasure: null,
       loopEndMeasure: null,
       sounding: [],
+      mutedParts: [],
+      soloedParts: [],
     },
   });
 
   const makeTransport =
     deps.createTransport ??
-    ((onPosition) => createBrowserTransport(new AudioContext(), { onPosition }));
+    ((onPosition) =>
+      createBrowserTransport(new AudioContext(), {
+        onPosition,
+        // Read per tone rather than captured, so editing the parts reaches
+        // playback without rebuilding the transport and losing its position.
+        routing: () => PartRouting.of(state.score),
+      }));
 
   let transport: Transport | null = null;
   let performance: Performance | null = null;
@@ -307,6 +321,17 @@ export function createEditorStore(initial: Score = blankScore(), deps: EditorSto
   };
 
   /** Builds the transport (and its audio context) on first use, per the autoplay policy */
+  /**
+   * The ensemble behind the transport, when there is one. A caller-supplied
+   * transport (tests, stories) may have none, in which case mute and solo are
+   * simply inert rather than an error.
+   */
+  const ensemble = (): Ensemble | null => {
+    const t = ensureTransport() as Partial<{ ensemble: Ensemble }>;
+
+    return t.ensemble ?? null;
+  };
+
   const ensureTransport = (): Transport => {
     if (!transport) {
       transport = makeTransport((seconds) => {
@@ -725,6 +750,44 @@ export function createEditorStore(initial: Score = blankScore(), deps: EditorSto
     setPlaybackLoop(loop: boolean): void {
       state.playback.loop = loop;
       transport?.setLoop(loop);
+    },
+
+    /**
+     * Silences one part, or restores it. Muting is the fastest way to hear
+     * whether a part is wrong, because timbre cannot separate two violins —
+     * they share an instrument sound, correctly, and the ear follows the line
+     * rather than the colour.
+     *
+     * The flag is kept in state as well as in the ensemble so the UI can show
+     * it without reaching through the transport, and so it survives a
+     * transport that has not been built yet.
+     */
+    togglePartMuted(part: number): void {
+      const muted = state.playback.mutedParts.includes(part);
+
+      state.playback.mutedParts = muted
+        ? state.playback.mutedParts.filter((entry) => entry !== part)
+        : [...state.playback.mutedParts, part].sort((a, b) => a - b);
+
+      ensemble()?.setMuted(part, !muted);
+    },
+
+    /** Isolates one part; with anything soloed the mutes are ignored until it clears. */
+    togglePartSoloed(part: number): void {
+      const soloed = state.playback.soloedParts.includes(part);
+
+      state.playback.soloedParts = soloed
+        ? state.playback.soloedParts.filter((entry) => entry !== part)
+        : [...state.playback.soloedParts, part].sort((a, b) => a - b);
+
+      ensemble()?.setSoloed(part, !soloed);
+    },
+
+    /** Restores every part to sounding. */
+    clearPartFilters(): void {
+      state.playback.mutedParts = [];
+      state.playback.soloedParts = [];
+      ensemble()?.reset();
     },
 
     /**
