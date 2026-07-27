@@ -177,8 +177,10 @@ silently becomes load-bearing. Each is also noted at its code site.
   later note of that letter and octave is judged against the key alone, which is the conventional
   reading. Needs no lookahead: a tie must be continued by the element immediately following it, so
   only a voice's first sounding element can be receiving one from across the barline.
-- An underfull (pickup) measure takes nearly a full measure's rhythmic width — the final
-  column's gap is priced to the time signature's capacity, not the actual content.
+- ~~An underfull (pickup) measure takes nearly a full measure's rhythmic width.~~ **Fixed:** the
+  last column's gap is priced to the measure's own content extent rather than the time signature's
+  capacity. Identical for a full bar, where the two agree; a half-bar pickup measured 16.59 staff
+  spaces against 15.50 for the full bar beside it before, and 14.27 after.
 - Rests print at their standard staff rows regardless of voice, so multi-voice measures can
   collide rests with the other voice.
 - Dynamics and hairpins sit on one baseline per staff per system, pushed below the deepest content

@@ -782,6 +782,14 @@ review item 4 for when it becomes due.
       but at a voice's first sounding element came from earlier in the same measure, where the
       state already carries the alteration and nothing prints anyway. 147 notes tie across a
       barline in this work, 30 of them carrying an explicit accidental.
+- [x] **Pickup measure width.** A partial measure took a full bar's rhythmic room: the last
+      column's gap was priced to the time signature's **capacity** rather than to the music, so
+      measure 128 — a half bar in cut time — laid out at **16.59 staff spaces against 15.50 for the
+      full bar beside it**, slightly more room for half the music. It is now priced to the
+      measure's own content extent, which is the same number for a full bar (where content and
+      capacity agree, so nothing existing moves) and 14.27 for that pickup. Partial measures were
+      already correct in the domain, in the importer, and in playback, whose time advances by what
+      sounds; engraving was the one consumer pricing them wrong.
 - [ ] Multi-voice rest placement for divisi.
 - [ ] Slur segments across 3+ systems.
 - [x] **Invariant test suite over the imported corpus.** Four properties any correct engraving has
@@ -864,7 +872,7 @@ calling this piece done.
       Independence is real but bounded, and the module says so: the checks recompute against the
       `Score` and the play order, so they catch `EventFlattening` and `TimeMapping` errors, but
       they call `NavigationUnfolding` and `TempoResolution` and so cannot catch those being wrong.
-- [ ] **A Fine ends the piece, not the movement — the finale never plays.** The real finding, and
+- [ ] **⇦ NEXT: A Fine ends the piece, not the movement — the finale never plays.** The real finding, and
       the reason the last check fails: `NavigationUnfolding` resolves Fine score-wide, so the
       Menuetto's `DaCapoAlFine` at measure 340 stops the performance at the Fine in measure 294 and
       **190 of 531 measures — the entire fourth movement — are never performed.** The score is
@@ -876,6 +884,25 @@ calling this piece done.
       **section-relative**, which is the one thing playback deliberately ignores — sections were
       modelled as presentational and playback was documented as not consulting them. That decision
       now has a counter-example and should be revisited rather than patched around.
+      **The proposal: segment the score at `NavigationMark.Capo`, unfold each segment
+      independently, and concatenate.** Capo is already a navigation concept playback reads, the
+      importer already places one at each movement start (0, 128, 237, 341), and its documented
+      meaning — "where a da capo returns to" — is exactly "the start of this navigation segment",
+      so this finishes the job its own doc says it left undone ("Segno, Coda, and Fine are still
+      resolved to their _first_ occurrence"). Fine, Segno and Coda become segment-local for free; a
+      score with no Capo is one segment, i.e. today's behaviour, so nothing regresses; and playback
+      still never reads `newSection`, leaving that decision intact. Contained to
+      `NavigationUnfolding` plus its tests and the corpus check that currently asserts 190 unplayed
+      measures.
+      **What it does not fix, worth knowing before starting.** (1) It relies on the importer's
+      convention that a Capo marks a movement start — a hand-authored score with a mid-movement
+      Capo would segment wrongly, and nothing enforces the convention. (2) A movement boundary
+      carrying only a `newSection` and no Capo still will not segment, because playback continues
+      to ignore sections; the two ways of saying "a movement begins here" stay unrelated. (3) A
+      repeat spanning a segment boundary would be cut at it — impossible in real music, but a new
+      assumption the code would be making silently. (4) A genuinely single-movement piece with one
+      Fine behaves exactly as before, which is correct but means this is untested by anything but
+      multi-movement scores.
 
 ### Phase 5 — Application
 

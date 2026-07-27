@@ -267,6 +267,9 @@ export const MeasureLayout = {
       groups: ReturnType<typeof Beaming.groups>;
     }[] = [];
 
+    /** The furthest any voice's written content reaches, across every staff */
+    let contentExtent = Fraction.zero();
+
     contexts.forEach((context, staffIndex) => {
       const content = measure.contents[staffIndex];
 
@@ -325,12 +328,31 @@ export const MeasureLayout = {
             onset = Fraction.add(onset, Duration.fractionOfWhole(element.duration));
           }
         });
+
+        if (Fraction.compare(onset, contentExtent) > 0) contentExtent = onset;
       });
     });
 
     /** Resolve column x positions left to right */
     const ordered = [...columns.values()].sort((a, b) => Fraction.compare(a.onset, b.onset));
-    const capacity = TimeSignature.capacity(contexts[0]?.time ?? TimeSignature.commonTime());
+
+    /**
+     * How far the last column's note reaches, which prices the gap after it.
+     *
+     * The measure's **content**, not its time signature's capacity. They are
+     * the same for a full bar, and differ for every pickup: pricing the last
+     * gap to the capacity gave a half-bar pickup a full bar's rhythmic width —
+     * measured at 16.59 staff spaces against 15.50 for the full bar beside it,
+     * so half the music took slightly *more* room. This work has 22 such
+     * measures, at every variation and Menuetto boundary.
+     *
+     * A capacity fallback still covers a measure holding nothing sounded at
+     * all, which would otherwise price its one gap at zero.
+     */
+    const extent =
+      Fraction.compare(contentExtent, Fraction.zero()) > 0
+        ? contentExtent
+        : TimeSignature.capacity(contexts[0]?.time ?? TimeSignature.commonTime());
 
     let cursor = signatureEnd;
 
@@ -341,7 +363,7 @@ export const MeasureLayout = {
         ...column.items.map((item) => contentWidthOf(item, contexts[item.staff].clef, measureText)),
       );
 
-      const next = ordered[columnIndex + 1]?.onset ?? capacity;
+      const next = ordered[columnIndex + 1]?.onset ?? extent;
       const delta = Fraction.add(
         next,
         Fraction.of(-column.onset.numerator, column.onset.denominator),

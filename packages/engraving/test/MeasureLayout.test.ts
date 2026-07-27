@@ -1,14 +1,22 @@
 import { describe, expect, it } from 'vitest';
 import { ClosingBarline } from '@scoregrove/domain/Barline';
+import { Clef } from '@scoregrove/domain/Clef';
+import { Mode } from '@scoregrove/domain/KeySignature';
 import { Duration, NoteValue } from '@scoregrove/domain/Duration';
 import { StaffContent, type Measure } from '@scoregrove/domain/Measure';
-import { Rest } from '@scoregrove/domain/MeasureElement';
+import { Note, Rest } from '@scoregrove/domain/MeasureElement';
 import { NonEmptyArray } from '@scoregrove/domain/NonEmptyArray';
+import { PitchClass, PitchLetter } from '@scoregrove/domain/Pitch';
+import { PositiveInteger } from '@scoregrove/domain/PositiveInteger';
+import { Score } from '@scoregrove/domain/Score';
+import { Staff } from '@scoregrove/domain/Staff';
+import { BeatUnit } from '@scoregrove/domain/TimeSignature';
 import { ContextWalk } from '../src/ContextWalk';
 import { Fixtures } from '../src/Fixtures';
 import type { LaidOutNote, LaidOutRest } from '../src/LayoutTree';
 import { MeasureLayout } from '../src/MeasureLayout';
 import { StemDirection } from '../src/Stems';
+import { pitch } from './helpers';
 
 const melody = Fixtures.monophonicMelody();
 const contexts = ContextWalk.walk(melody);
@@ -274,5 +282,69 @@ describe('MeasureLayout.layout across staves and voices', () => {
     expect(notesOf(treble, 1).length).toBeGreaterThan(0);
     notesOf(treble).forEach((note) => expect(note.address.staff).toBe(0));
     notesOf(bass).forEach((note) => expect(note.address.staff).toBe(1));
+  });
+});
+
+describe('MeasureLayout.layout, measure width', () => {
+  const quarter = Duration.of(NoteValue.Quarter);
+  const note = (letter: PitchLetter) => Note.of(pitch(letter, 5), quarter);
+
+  const scoreOf = (measures: Measure[]): Score =>
+    Score.of({
+      staves: NonEmptyArray.of([Staff.of(Clef.Treble)]),
+      key: { tonic: PitchClass.of(PitchLetter.C), mode: Mode.Major },
+      time: { beats: PositiveInteger.of(4), beatUnit: BeatUnit.Quarter },
+      measures: NonEmptyArray.of(measures),
+    });
+
+  const measureOf = (letters: PitchLetter[], partial = false): Measure => ({
+    contents: NonEmptyArray.of([StaffContent.singleVoice(NonEmptyArray.of(letters.map(note)))]),
+    ...(partial ? { partial: true } : {}),
+  });
+
+  const widths = (score: Score) => {
+    const walked = ContextWalk.walk(score);
+
+    return score.measures.map(
+      (measure, measureIndex) =>
+        MeasureLayout.layout({ contexts: walked[measureIndex], measure, measureIndex })[0].width,
+    );
+  };
+
+  it('gives a pickup less room than a full bar, not more', () => {
+    // The last column's gap used to be priced to the time signature's capacity
+    // rather than to the music, so a half-bar pickup took a full bar's rhythmic
+    // width. Measured on the corpus at 16.59 staff spaces against 15.50 for the
+    // full bar beside it — half the music, slightly more room. The pickup here
+    // also carries the clef, key and time signature and is *still* narrower,
+    // which makes this a stronger comparison than it looks.
+    const [pickup, full] = widths(
+      scoreOf([
+        measureOf([PitchLetter.C, PitchLetter.D], true),
+        measureOf([PitchLetter.C, PitchLetter.D, PitchLetter.E, PitchLetter.F]),
+      ]),
+    );
+
+    expect(pickup).toBeLessThan(full);
+  });
+
+  it('leaves a full bar alone', () => {
+    // Content and capacity agree for a full measure, so this is the case the
+    // change must not touch — every existing score is one. Compared between
+    // two interior bars, since the first also prints clef, key and time and
+    // would differ for reasons that have nothing to do with spacing.
+    const four = [PitchLetter.C, PitchLetter.D, PitchLetter.E, PitchLetter.F];
+    const [, second, third] = widths(scoreOf([measureOf(four), measureOf(four), measureOf(four)]));
+
+    expect(second).toBeCloseTo(third, 6);
+  });
+
+  it('prices a shorter pickup more tightly than a longer one', () => {
+    const [oneBeat] = widths(scoreOf([measureOf([PitchLetter.C], true), measureOf([])]));
+    const [twoBeats] = widths(
+      scoreOf([measureOf([PitchLetter.C, PitchLetter.D], true), measureOf([])]),
+    );
+
+    expect(oneBeat).toBeLessThan(twoBeats);
   });
 });
