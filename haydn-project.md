@@ -852,9 +852,23 @@ calling this piece done.
       after they have begun. Solo overrides mute as on any mixer, and clearing the solo restores
       the mutes rather than forgetting them.
 - [ ] String-appropriate envelope — the current ADSR is a plucked/keyed shape; bowed attack and
-      release are different enough to matter.
-- [ ] Articulation shaping of duration and velocity (staccato shortens, tenuto sustains, accent
-      and marcato hit harder). Flagged as unapplied in `playback.md`.
+      release are different enough to matter. **Take the detaché default with it** (see
+      articulation shaping below): giving an unmarked note slightly less than its full length is
+      what makes tenuto mean something, and it changes every note, so it wants one listening pass
+      rather than two.
+- [x] **Articulation shaping of duration and velocity** (`Articulations`). Two knobs, because that
+      is what the marks mean: staccato and staccatissimo shorten the **sound** while moving
+      nothing, so the next note still begins where it was written and the gap is what a listener
+      hears as detachment; accent and marcato leave the length alone and strike harder. Several
+      marks on one note combine by taking the strongest of each, so staccato-plus-accent is short
+      _and_ loud rather than whichever was written first. Velocity is clamped at full. Applies to
+      **1,040 notes** here — every articulation in the work is a staccato, not one accent, tenuto
+      or marcato in 531 measures.
+      **Tenuto is a deliberate no-op, and the module says why.** An unarticulated note already
+      sounds its full written length, so "tenuto sustains" adds nothing; making it audible means
+      giving unmarked notes a shorter default — a detaché of perhaps 0.9 — which changes how every
+      note sounds, needs an ear, and belongs with the bowed-envelope item below. The table is
+      written so that is one number when it comes.
 - [ ] Slur → legato (overlap and suppressed re-attack).
 - [ ] Ornament realization — at minimum trills; tremolo if the histogram demands it.
 - [ ] Crescendo/diminuendo as true ramps, applied at staff rather than voice scope.

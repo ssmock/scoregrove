@@ -1,5 +1,6 @@
 import { Result } from '@scoregrove/domain/Result';
 import { Score } from '@scoregrove/domain/Score';
+import { Articulations } from './Articulations';
 import { Dynamics } from './Dynamics';
 import { EventFlattening } from './EventFlattening';
 import { NavigationUnfolding } from './NavigationUnfolding';
@@ -36,7 +37,8 @@ export const Compiler = {
     const beatEvents = EventFlattening.flatten(score, playOrder);
     const tempoMap = TimeMapping.build(score, playOrder);
     const velocities = Dynamics.velocities(score);
-    const events = TimeMapping.toNoteEvents(beatEvents, tempoMap, velocities);
+    const shapings = Articulations.shapings(score);
+    const events = TimeMapping.toNoteEvents(beatEvents, tempoMap, velocities, shapings);
     const measureTimes = TimeMapping.measureTimes(playOrder, tempoMap);
 
     return Result.ok({ events, durationSeconds: tempoMap.durationSeconds, measureTimes });

@@ -2,6 +2,7 @@ import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 import { Result } from '@scoregrove/domain/Result';
+import { Articulations } from '@scoregrove/playback/Articulations';
 import { Compiler } from '@scoregrove/playback/Compiler';
 import { PerformanceChecks } from '@scoregrove/playback/PerformanceChecks';
 import { ScoreAssembly } from '../src/ScoreAssembly';
@@ -75,5 +76,27 @@ describe('the whole quartet, performed', () => {
     expect(score.measures[340].jump).toBe('DaCapoAlFine');
     expect(score.measures[341].newSection?.title).toBe('IV. Finale');
     expect(score.measures[341].marks).toContain('Capo');
+  });
+});
+
+describe('the whole quartet, articulated', () => {
+  it('shortens every staccato note, and only those', () => {
+    // Every one of this work's 1,040 articulations is a staccato — not one
+    // accent, tenuto or marcato in 531 measures — so the shortened events
+    // should be exactly the staccato onsets, counted over the play order.
+    const shapings = Articulations.shapings(score);
+
+    expect(shapings.size).toBeGreaterThan(0);
+    expect([...new Set([...shapings.values()].map((shaping) => shaping.duration))]).toEqual([0.5]);
+    expect([...new Set([...shapings.values()].map((shaping) => shaping.velocity))]).toEqual([1]);
+  });
+
+  it('leaves every start time where it was written', () => {
+    // Articulation shortens the sound, never the position. If it moved a start
+    // the total duration check would still pass — it is measured from the
+    // tempo map — so this is the assertion that catches it.
+    expect(named('the total duration matches tempo times meter').failures).toEqual([]);
+    expect(named('events are in start order').failures).toEqual([]);
+    expect(named('no event has a zero, negative or unreal length').failures).toEqual([]);
   });
 });

@@ -3,6 +3,7 @@ import type { Score } from '@scoregrove/domain/Score';
 import type { Tempo } from '@scoregrove/domain/Tempo';
 import type { TimeSignature } from '@scoregrove/domain/TimeSignature';
 import { addressKey, type BeatEvent, type EventAddress } from './EventFlattening';
+import { Articulations, type Shaping } from './Articulations';
 import { measureContentLength } from './MeasureTiming';
 import type { PlayStep } from './NavigationUnfolding';
 import { TempoResolution, type ResolvedTempo } from './TempoResolution';
@@ -178,6 +179,7 @@ export const TimeMapping = {
     beatEvents: readonly BeatEvent[],
     map: TempoMap,
     velocities?: ReadonlyMap<string, number>,
+    shapings?: ReadonlyMap<string, Shaping>,
   ): NoteEvent[] {
     return beatEvents.map((event) => {
       const startSeconds = TimeMapping.secondsAt(map, event.startBeat);
@@ -186,11 +188,17 @@ export const TimeMapping = {
         Fraction.add(event.startBeat, event.durationBeats),
       );
 
+      const key = addressKey(event.address);
+      const shaping = shapings?.get(key) ?? Articulations.unshaped;
+
       return {
         startSeconds,
-        durationSeconds: endSeconds - startSeconds,
+        // Articulation shortens the *sound*, never the position: the next note
+        // still begins where it was written, and the silence between is what a
+        // listener hears as detachment.
+        durationSeconds: (endSeconds - startSeconds) * shaping.duration,
         pitchNumber: event.pitchNumber,
-        velocity: velocities?.get(addressKey(event.address)) ?? fallbackVelocity,
+        velocity: Math.min(1, (velocities?.get(key) ?? fallbackVelocity) * shaping.velocity),
         address: event.address,
       };
     });
