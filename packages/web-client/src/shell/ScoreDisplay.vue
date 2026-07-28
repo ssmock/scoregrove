@@ -483,6 +483,7 @@ useHotkeys(
     <div v-else class="score-display__scroll">
       <SystemView
         v-if="unbrokenSystem"
+        :fit="false"
         :system="unbrokenSystem"
         :scale="scale"
         bar-handles

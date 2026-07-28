@@ -170,6 +170,13 @@ silently becomes load-bearing. Each is also noted at its code site.
 
 ### Horizontal layout
 
+- ~~The horizontal flow scales its system down to fit the viewport instead of overflowing.~~
+  **Fixed:** `SystemView`'s `max-width: 100%` — added so print could not clip a system — applied
+  to the unbroken flow too, where the system is laid out far wider than the viewport on purpose.
+  With `height: auto` alongside it the whole line scaled down proportionally, and its scroll
+  container had nothing to scroll. Shrinking is now the caller's decision (`fit`, default true);
+  the horizontal flow opts out.
+
 - A persisted score from before `KeySignature` became `{ fifths, mode? }` renders with **no key
   signature at all** rather than failing: `Projects` does no schema validation on load (a
   documented gap), so an old `{ tonic, mode }` entry in localStorage reads `fifths` as undefined

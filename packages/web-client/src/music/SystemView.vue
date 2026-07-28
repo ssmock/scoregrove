@@ -37,6 +37,14 @@ const props = withDefaults(
     labels?: readonly (string | undefined)[];
     /** Left margin reserved for the labels, in staff spaces; measured by the layout */
     labelWidth?: number;
+    /**
+     * Whether the system may shrink to fit a container narrower than its
+     * laid-out width. True for the broken flow, where a system is laid out
+     * *to* the page width and shrinking is how print stays inside the paper.
+     * False for the horizontal flow, which is one unbroken system deliberately
+     * wider than the viewport and meant to be scrolled.
+     */
+    fit?: boolean;
     /** Brackets and braces over runs of staves, drawn at the system's left edge */
     groups?: readonly StaffGroup[];
     /** Show a clickable playback handle at each bar's opening barline */
@@ -55,6 +63,7 @@ const props = withDefaults(
     scale: 10,
     labels: () => [],
     labelWidth: 8,
+    fit: true,
     groups: () => [],
     barHandles: false,
     isLastSystem: false,
@@ -241,6 +250,7 @@ function onContextmenu(event: MouseEvent): void {
   <svg
     ref="svg"
     class="system-view"
+    :class="{ 'system-view--natural': !props.fit }"
     :viewBox="viewBox"
     :width="(props.system.width + labelMargin) * props.scale"
     :height="height * props.scale"
@@ -395,6 +405,12 @@ function onContextmenu(event: MouseEvent): void {
  * ever growing past its laid-out size; `height: auto` keeps the aspect
  * ratio the `viewBox` already implies.
  *
+ * `max-width` applies only where shrinking is wanted. The horizontal flow opts
+ * out via `fit: false`: its system is one unbroken line, laid out far wider
+ * than the viewport on purpose, and clamping it to 100% made it *scale down to
+ * fit* — `height: auto` shrinking the music proportionally — instead of
+ * overflowing into the scroll container that exists for it.
+ *
  * `overflow: visible` overrides the root `<svg>`'s default clip-to-viewBox:
  * a justified system's closing barline is anchored at exactly `x =
  * measure.width`, i.e. exactly the viewBox's own right edge (`MeasureView`'s
@@ -409,6 +425,11 @@ svg {
   max-width: 100%;
   height: auto;
   overflow: visible;
+}
+
+/* Takes its laid-out width and lets the container scroll; see the note above */
+.system-view--natural {
+  max-width: none;
 }
 
 .bar-handle {

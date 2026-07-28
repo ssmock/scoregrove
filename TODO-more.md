@@ -23,3 +23,7 @@ A clef change goes where the register changes, and is routine in cello, bassoon,
 # Engraving Gaps
 
 Engraving doesn't yet draw the bracket, invisible noteheads, or pinned rest rows.
+
+# Fix horizontal editor view
+
+It should fill the whole area; it needs to scroll vertically too (it's cut off in the Haydn demo)

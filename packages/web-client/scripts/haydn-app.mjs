@@ -21,7 +21,17 @@
  *
  * Usage: `pnpm --filter web-client haydn-app <score.json> [outDir]`
  *
+ * It **builds first**, every time. The app is served from `dist`, so without
+ * that a source change is simply invisible — the server hands you the previous
+ * bundle and the bug you just fixed is still there. That cost twice in one
+ * session before the build moved in here. It is the whole workspace rather
+ * than just the app, because nothing aliases `@scoregrove/*` to source: the
+ * app resolves them through package exports to each package's own `dist`, so a
+ * change in `engraving` needs that package built too. The whole thing is
+ * incremental and takes under two seconds.
+ *
  * Options:
+ *   --no-build     serve whatever is already built (for iterating on this script)
  *   --serve        keep the server running and print a URL instead of capturing
  *   --width=<px>   viewport width (default 1400)
  *   --height=<px>  viewport height (default 1000)
@@ -29,11 +39,15 @@
  *   --scrolls=<n>  how many screenfuls to capture (default 3)
  *   --timeout=<ms> how long to allow for the app to open (default 180000)
  */
+import { execFile } from 'node:child_process';
 import { createServer } from 'node:http';
 import { mkdir, readFile, rm, writeFile } from 'node:fs/promises';
 import { extname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { promisify } from 'node:util';
 import { chromium } from 'playwright-core';
+
+const run = promisify(execFile);
 
 const packageRoot = fileURLToPath(new URL('..', import.meta.url));
 const distDir = join(packageRoot, 'dist');
@@ -65,6 +79,21 @@ const types = {
   '.woff2': 'font/woff2',
   '.svg': 'image/svg+xml',
 };
+
+if (!flags.has('no-build')) {
+  const started = Date.now();
+
+  try {
+    // The workspace, not just this package: the app bundles its dependencies
+    // from their `dist`, so building only web-client would still serve stale
+    // engraving or playback.
+    await run('pnpm', ['--dir', join(packageRoot, '..', '..'), 'build'], { maxBuffer: 1 << 24 });
+  } catch (error) {
+    fail(`Build failed, so the app would be stale:\n\n${error.stdout ?? error.message}`);
+  }
+
+  console.log(`\n  Built in ${Date.now() - started} ms`);
+}
 
 const score = await readFile(resolve(process.cwd(), scorePath), 'utf8').catch(() =>
   fail(`Cannot read ${scorePath}`),
